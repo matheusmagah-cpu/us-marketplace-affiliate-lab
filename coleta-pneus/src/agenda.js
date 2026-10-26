@@ -31,6 +31,11 @@ function dataLocal(ano, mes, dia, hora, minuto) {
 
 const emMinutos = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
 
+export function dataLocalISO(data) {
+  const p = partesLocais(data);
+  return `${p.ano}-${String(p.mes).padStart(2, '0')}-${String(p.dia).padStart(2, '0')}`;
+}
+
 export function dentroDaJanela(data) {
   const p = partesLocais(data);
   const janela = E.janelas[p.diaSemana];

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS estabelecimentos (
   telefone TEXT,
   tipo_telefone TEXT,
   tem_whatsapp INTEGER,
+  whatsapp_id TEXT,
   fonte TEXT,
   nota REAL,
   avaliacoes INTEGER,
@@ -75,7 +76,7 @@ const CAMPOS = {
 };
 
 const COLUNAS_EDITAVEIS = new Set([
-  'status', 'trabalha_remold', 'optout', 'observacoes', 'tem_whatsapp',
+  'status', 'trabalha_remold', 'optout', 'observacoes', 'tem_whatsapp', 'whatsapp_id',
   'telefone', 'tipo_telefone', 'endereco', 'lat', 'lng',
 ]);
 
@@ -133,6 +134,11 @@ export function obterEstabelecimento(db, id) {
 
 export function buscarPorTelefone(db, telefone) {
   return db.prepare('SELECT * FROM estabelecimentos WHERE telefone = ?').get(telefone);
+}
+
+// O WhatsApp às vezes registra celulares antigos sem o 9º dígito; por isso guardamos o id que ele devolve.
+export function buscarPorWhatsappId(db, whatsappId) {
+  return db.prepare('SELECT * FROM estabelecimentos WHERE whatsapp_id = ?').get(whatsappId);
 }
 
 export function atualizarEstabelecimento(db, id, campos) {
