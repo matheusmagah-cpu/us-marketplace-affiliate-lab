@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Rotas</title><link rel="stylesheet" href="estilo.css"></head>
+<body>
+<header><a href="/">Contatos</a><a href="/rotas.html">Rotas</a><span class="espaco"></span><button id="pausa"></button></header>
+<main>
+  <div class="cartao">
+    <h2>Rota de coleta</h2>
+    <div class="filtros">
+      <input type="date" id="data">
+      <select id="cidades" multiple size="5"></select>
+      <button id="gerar">Gerar rota</button>
+    </div>
+    <p style="color:var(--suave)">Sem cidade marcada = todas. Saída: Av. Adalberto Barros Nunes, Retiro, Volta Redonda.</p>
+  </div>
+  <div class="cartao" id="resultado" hidden>
+    <p class="total" id="resumo"></p>
+    <div id="rotas"></div>
+    <div id="sem"></div>
+  </div>
+</main>
+<script type="module">
+import { api, el, reais, montarCabecalho } from './comum.js';
+const estado = await montarCabecalho();
+for (const c of estado.cidades) document.getElementById('cidades').append(el('option', c, { value: c }));
+document.getElementById('data').value = new Date().toISOString().slice(0, 10);
+
+document.getElementById('gerar').onclick = async () => {
+  const data = document.getElementById('data').value;
+  const cidades = [...document.getElementById('cidades').selectedOptions].map((o) => o.value);
+  const q = new URLSearchParams({ data });
+  if (cidades.length) q.set('cidades', cidades.join(','));
+  const r = await api('/api/rotas?' + q);
+  document.getElementById('resultado').hidden = false;
+  const paradas = r.rotas.reduce((s, x) => s + x.paradas.length, 0);
+  document.getElementById('resumo').textContent = paradas + (paradas === 1 ? ' parada · ' : ' paradas · ') + r.totalPneus + ' pneus previstos · ' + reais(r.totalValor) + ' a receber';
+  const div = document.getElementById('rotas');
+  div.replaceChildren();
+  r.rotas.forEach((rota, i) => {
+    div.append(el('h3', 'Rota ' + (i + 1)));
+    const ol = el('ol');
+    for (const p of rota.paradas) ol.append(el('li', p.nome + ' (' + p.cidade + ') · ' + (p.endereco || '') + ' · ' + (p.qtd_pneus_prevista ?? '?') + ' pneus · ' + (p.telefone || '')));
+    div.append(ol, el('a', 'Abrir rota no Google Maps', { href: rota.link, target: '_blank' }));
+  });
+  const sem = document.getElementById('sem');
+  sem.replaceChildren();
+  if (r.semCoordenadas.length) {
+    sem.append(el('h3', 'Sem localização (incluir manualmente)'));
+    for (const p of r.semCoordenadas) sem.append(el('p', p.nome + ' (' + p.cidade + ') · ' + (p.endereco || 'sem endereço')));
+  }
+};
+</script>
+</body>
+</html>

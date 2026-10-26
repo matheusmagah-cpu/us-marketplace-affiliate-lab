@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Coleta de Pneus</title><link rel="stylesheet" href="estilo.css"></head>
+<body>
+<header><a href="/">Contatos</a><a href="/rotas.html">Rotas</a><span class="espaco"></span><button id="pausa"></button></header>
+<main>
+  <div class="cartao"><h2>Funil por cidade</h2><table id="funil"></table></div>
+  <div class="cartao">
+    <h2>Borracharias e auto centers</h2>
+    <div class="filtros">
+      <select id="f-cidade"><option value="">Todas as cidades</option></select>
+      <select id="f-status"><option value="">Todos os status</option></select>
+      <select id="f-whatsapp"><option value="">WhatsApp: todos</option><option value="sim">Com WhatsApp</option><option value="nao">Sem WhatsApp</option></select>
+      <select id="f-remold"><option value="">Remold: todos</option><option value="sim">Trabalha com remold</option><option value="nao">Não trabalha</option><option value="desconhecido">Não sabemos</option></select>
+      <span id="contagem" class="etiqueta"></span>
+    </div>
+    <table><thead><tr><th>Cidade</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Remold</th></tr></thead><tbody id="lista"></tbody></table>
+  </div>
+</main>
+<script type="module">
+import { api, el, NOMES_STATUS, montarCabecalho } from './comum.js';
+const estado = await montarCabecalho();
+for (const c of estado.cidades) document.getElementById('f-cidade').append(el('option', c, { value: c }));
+for (const [v, n] of Object.entries(NOMES_STATUS)) document.getElementById('f-status').append(el('option', n, { value: v }));
+
+async function carregarFunil() {
+  const funil = await api('/api/funil');
+  const t = document.getElementById('funil');
+  t.replaceChildren();
+  const cab = el('tr');
+  for (const h of ['Cidade', 'Mapeados', 'Com WhatsApp', 'Contatados', 'Responderam', 'Aceitaram', 'Recolhidos']) cab.append(el('th', h));
+  t.append(cab);
+  for (const [cidade, f] of Object.entries(funil)) {
+    const tr = el('tr');
+    for (const v of [cidade, f.mapeados, f.comWhatsapp, f.enviados, f.responderam, f.aceitaram, f.recolhidos]) tr.append(el('td', v));
+    t.append(tr);
+  }
+}
+
+async function carregarLista() {
+  const q = new URLSearchParams();
+  for (const [id, chave] of [['f-cidade', 'cidade'], ['f-status', 'status'], ['f-whatsapp', 'whatsapp'], ['f-remold', 'remold']]) {
+    const v = document.getElementById(id).value;
+    if (v) q.set(chave, v);
+  }
+  const lista = await api('/api/estabelecimentos?' + q);
+  const tbody = document.getElementById('lista');
+  tbody.replaceChildren();
+  for (const e of lista) {
+    const tr = el('tr');
+    tr.append(el('td', e.cidade));
+    const td = el('td');
+    td.append(el('a', e.nome, { href: '/ficha.html?id=' + e.id }));
+    tr.append(td, el('td', e.telefone || '—'), el('td', NOMES_STATUS[e.status] || e.status), el('td', e.trabalha_remold));
+    tbody.append(tr);
+  }
+  document.getElementById('contagem').textContent = lista.length + ' resultados';
+}
+
+for (const id of ['f-cidade', 'f-status', 'f-whatsapp', 'f-remold']) document.getElementById(id).onchange = carregarLista;
+carregarFunil();
+carregarLista();
+</script>
+</body>
+</html>

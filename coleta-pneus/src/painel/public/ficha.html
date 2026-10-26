@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ficha</title><link rel="stylesheet" href="estilo.css"></head>
+<body>
+<header><a href="/">Contatos</a><a href="/rotas.html">Rotas</a><span class="espaco"></span><button id="pausa"></button></header>
+<main>
+  <div class="grade">
+    <div class="cartao">
+      <h2 id="nome"></h2>
+      <p id="dados"></p>
+      <p><a id="mapa" target="_blank">Abrir no mapa</a></p>
+      <label>Status <select id="status"></select></label>
+      <p><label>Trabalha com remold?
+        <select id="remold"><option value="desconhecido">Não sabemos</option><option value="sim">Sim</option><option value="nao">Não</option></select></label></p>
+      <p><textarea id="obs" rows="3" style="width:100%" placeholder="Observações"></textarea></p>
+      <button id="salvar">Salvar</button>
+    </div>
+    <div class="cartao">
+      <h3>Agendar coleta</h3>
+      <p><input type="date" id="data"> <input type="number" id="qtd" min="0" placeholder="Qtd. de pneus" style="width:130px"></p>
+      <button id="agendar">Agendar</button>
+      <h3>Coletas</h3>
+      <div id="coletas"></div>
+    </div>
+  </div>
+  <div class="cartao">
+    <h3>Conversa</h3>
+    <div class="conversa" id="conversa"></div>
+    <p><textarea id="resposta" rows="2" style="width:100%" placeholder="Escreva a resposta (o robô envia quando estiver ligado)"></textarea></p>
+    <button id="responder">Enviar resposta</button>
+  </div>
+</main>
+<script type="module">
+import { api, el, NOMES_STATUS, reais, montarCabecalho } from './comum.js';
+montarCabecalho();
+const id = new URLSearchParams(location.search).get('id');
+for (const [v, n] of Object.entries(NOMES_STATUS)) document.getElementById('status').append(el('option', n, { value: v }));
+
+async function carregar() {
+  const e = await api('/api/estabelecimentos/' + id);
+  document.getElementById('nome').textContent = e.nome;
+  document.getElementById('dados').textContent = [e.cidade, e.endereco, e.telefone, e.tem_whatsapp === 1 ? 'tem WhatsApp' : 'sem WhatsApp confirmado'].filter(Boolean).join(' · ');
+  const mapa = document.getElementById('mapa');
+  mapa.href = e.link_maps || (e.lat ? 'https://www.google.com/maps?q=' + e.lat + ',' + e.lng : '#');
+  document.getElementById('status').value = e.status;
+  document.getElementById('remold').value = e.trabalha_remold;
+  document.getElementById('obs').value = e.observacoes || '';
+
+  const conversa = document.getElementById('conversa');
+  conversa.replaceChildren();
+  for (const m of e.mensagens) {
+    const d = el('div', m.texto, { class: 'msg ' + m.direcao });
+    d.append(el('small', new Date(m.data_hora).toLocaleString('pt-BR')));
+    conversa.append(d);
+  }
+
+  const coletas = document.getElementById('coletas');
+  coletas.replaceChildren();
+  for (const c of e.coletas) {
+    const linha = el('p', c.data_prevista + ' · previsto ' + (c.qtd_pneus_prevista ?? '?') + ' pneus · ' + c.status + (c.valor != null ? ' · ' + reais(c.valor) : ''));
+    if (c.status === 'agendada') {
+      const qtd = el('input', null, { type: 'number', min: '0', placeholder: 'Qtd. real', style: 'width:100px;margin-left:8px' });
+      const feita = el('button', 'Recolhido');
+      feita.onclick = async () => { await api('/api/coletas/' + c.id, 'PATCH', { qtdReal: Number(qtd.value), status: 'feita' }); carregar(); };
+      const cancelar = el('button', 'Cancelar', { class: 'secundario' });
+      cancelar.onclick = async () => { await api('/api/coletas/' + c.id, 'PATCH', { status: 'cancelada' }); carregar(); };
+      linha.append(qtd, ' ', feita, ' ', cancelar);
+    }
+    coletas.append(linha);
+  }
+}
+
+document.getElementById('salvar').onclick = async () => {
+  await api('/api/estabelecimentos/' + id, 'PATCH', {
+    status: document.getElementById('status').value,
+    trabalha_remold: document.getElementById('remold').value,
+    observacoes: document.getElementById('obs').value,
+  });
+  carregar();
+};
+document.getElementById('agendar').onclick = async () => {
+  const data = document.getElementById('data').value;
+  if (!data) return alert('Escolha a data.');
+  await api('/api/coletas', 'POST', { estabelecimentoId: Number(id), dataPrevista: data, qtdPrevista: Number(document.getElementById('qtd').value) || null });
+  carregar();
+};
+document.getElementById('responder').onclick = async () => {
+  const caixa = document.getElementById('resposta');
+  if (!caixa.value.trim()) return;
+  await api('/api/estabelecimentos/' + id + '/responder', 'POST', { texto: caixa.value });
+  caixa.value = '';
+  alert('Resposta na fila. O robô do WhatsApp envia em até 30 segundos (precisa estar ligado).');
+};
+carregar();
+</script>
+</body>
+</html>
