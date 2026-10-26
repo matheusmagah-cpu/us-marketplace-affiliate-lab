@@ -1,0 +1,10 @@
+{
+  "elements": [
+    { "type": "node", "id": 1, "lat": -22.4012, "lon": -44.2601,
+      "tags": { "name": "Borracharia do Zé", "shop": "tyres", "phone": "+55 24 99876-5432",
+                "addr:street": "Rua A", "addr:housenumber": "10" } },
+    { "type": "way", "id": 2, "center": { "lat": -22.4100, "lon": -44.2700 },
+      "tags": { "name": "Auto Center Quatis", "shop": "car_repair", "contact:phone": "(24) 3353-1100" } },
+    { "type": "node", "id": 3, "lat": -22.4, "lon": -44.26, "tags": { "shop": "tyres" } }
+  ]
+}
