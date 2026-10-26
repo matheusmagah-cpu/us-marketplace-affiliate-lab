@@ -21,3 +21,12 @@ export function normalizarTelefone(bruto, dddPadrao = '24') {
   }
   return invalido;
 }
+
+// Variações do número para achar o contato no WhatsApp (com e sem o 9º dígito).
+export function variacoesDoNumero(numero) {
+  const d = String(numero || '').replace(/\D/g, '');
+  const vars = new Set([d]);
+  if (d.length === 13 && d[4] === '9') vars.add(d.slice(0, 4) + d.slice(5));
+  if (d.length === 12) vars.add(d.slice(0, 4) + '9' + d.slice(4));
+  return [...vars];
+}

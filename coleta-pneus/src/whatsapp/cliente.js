@@ -2,6 +2,8 @@
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 
+export { variacoesDoNumero } from '../telefone.js';
+
 const { Client, LocalAuth } = pkg;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,19 +29,33 @@ export async function verificarNumero(client, numero) {
   return id ? id._serialized : null;
 }
 
-export async function enviar(client, whatsappId, texto) {
-  const chat = await client.getChatById(whatsappId);
-  await chat.sendStateTyping();
-  await esperar(Math.min(15000, 40 * texto.length));
-  await client.sendMessage(whatsappId, texto);
-  await chat.clearState();
+// Resolve o id @c.us (telefone) de quem escreveu de um id @lid.
+export async function telefoneDoLid(client, lid) {
+  try {
+    const [r] = await client.getContactLidAndPhone([lid]);
+    return r?.pn ?? null;
+  } catch {
+    return null;
+  }
 }
 
-// Variações do número para achar o contato (com e sem o 9º dígito).
-export function variacoesDoNumero(numero) {
-  const d = String(numero || '').replace(/\D/g, '');
-  const vars = new Set([d]);
-  if (d.length === 13 && d[4] === '9') vars.add(d.slice(0, 4) + d.slice(5));
-  if (d.length === 12) vars.add(d.slice(0, 4) + '9' + d.slice(4));
-  return [...vars];
+// Envia simulando digitação. Só lança erro se a mensagem em si falhar;
+// falhas de "digitando" e de limpeza depois do envio são ignoradas para não reenviar.
+export async function enviar(client, whatsappId, texto) {
+  if (!whatsappId) throw new Error('contato sem id do WhatsApp');
+  let chat = null;
+  try {
+    chat = await client.getChatById(whatsappId);
+    await chat.sendStateTyping();
+  } catch {
+    // segue sem "digitando"
+  }
+  await esperar(Math.min(15000, 40 * texto.length));
+  await client.sendMessage(whatsappId, texto, { sendSeen: false });
+  try {
+    await chat?.clearState();
+  } catch {
+    // mensagem já foi enviada
+  }
 }
+

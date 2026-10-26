@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import config from '../../config/config.js';
 import {
   abrirBanco, listarEstabelecimentos, obterEstabelecimento, atualizarEstabelecimento,
-  listarMensagens, salvarColeta, atualizarColeta, listarColetas, gravarAjuste, lerAjuste,
+  listarMensagens, salvarColeta, atualizarColeta, listarColetas, gravarAjuste, lerAjuste, marcarOptout,
 } from '../db.js';
 import { montarRota, valorColeta } from '../rota.js';
 
@@ -52,7 +52,10 @@ export function criarApp(db) {
     if (status !== undefined && !STATUS_VALIDOS.has(status)) return res.status(400).json({ erro: 'status inválido' });
     if (trabalha_remold !== undefined && !REMOLD_VALIDOS.has(trabalha_remold)) return res.status(400).json({ erro: 'valor de remold inválido' });
     const campos = { status, trabalha_remold, observacoes };
-    if (status === 'optout') campos.optout = 1;
+    if (status === 'optout') {
+      const e = obterEstabelecimento(db, Number(req.params.id));
+      if (e) marcarOptout(db, e);
+    }
     atualizarEstabelecimento(db, Number(req.params.id), Object.fromEntries(Object.entries(campos).filter(([, v]) => v !== undefined)));
     res.json(obterEstabelecimento(db, Number(req.params.id)));
   });
@@ -60,6 +63,9 @@ export function criarApp(db) {
   app.post('/api/estabelecimentos/:id/responder', (req, res) => {
     const texto = String(req.body.texto || '').trim();
     if (!texto) return res.status(400).json({ erro: 'texto vazio' });
+    const e = obterEstabelecimento(db, Number(req.params.id));
+    if (!e) return res.status(404).json({ erro: 'não encontrado' });
+    if (e.optout) return res.status(409).json({ erro: 'este contato pediu para não receber mensagens' });
     db.prepare("INSERT INTO fila_envio (estabelecimento_id, campanha, texto) VALUES (?, 'manual', ?)").run(Number(req.params.id), texto);
     res.status(201).json({ ok: true });
   });
@@ -67,6 +73,7 @@ export function criarApp(db) {
   app.post('/api/coletas', (req, res) => {
     const { estabelecimentoId, dataPrevista, qtdPrevista } = req.body;
     if (!estabelecimentoId || !/^\d{4}-\d{2}-\d{2}$/.test(dataPrevista || '')) return res.status(400).json({ erro: 'dados inválidos' });
+    if (!obterEstabelecimento(db, Number(estabelecimentoId))) return res.status(404).json({ erro: 'não encontrado' });
     const id = salvarColeta(db, { estabelecimentoId, dataPrevista, qtdPrevista: qtdPrevista ?? null });
     atualizarEstabelecimento(db, estabelecimentoId, { status: 'coleta_agendada' });
     res.status(201).json({ id });
@@ -98,5 +105,6 @@ export function criarApp(db) {
 }
 
 if (process.argv[1]?.endsWith('servidor.js')) {
-  criarApp(abrirBanco()).listen(3000, () => console.log('Painel em http://localhost:3000'));
+  // Só este computador acessa o painel (ninguém da rede local).
+  criarApp(abrirBanco()).listen(3000, '127.0.0.1', () => console.log('Painel em http://localhost:3000'));
 }

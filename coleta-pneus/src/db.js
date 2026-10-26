@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { mesmoEstabelecimento } from './dedup.js';
+import { variacoesDoNumero } from './telefone.js';
 
 const ESQUEMA = `
 CREATE TABLE IF NOT EXISTS estabelecimentos (
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS estabelecimentos (
   tipo_telefone TEXT,
   tem_whatsapp INTEGER,
   whatsapp_id TEXT,
+  lid TEXT,
   fonte TEXT,
   nota REAL,
   avaliacoes INTEGER,
@@ -76,7 +78,7 @@ const CAMPOS = {
 };
 
 const COLUNAS_EDITAVEIS = new Set([
-  'status', 'trabalha_remold', 'optout', 'observacoes', 'tem_whatsapp', 'whatsapp_id',
+  'status', 'trabalha_remold', 'optout', 'observacoes', 'tem_whatsapp', 'whatsapp_id', 'lid',
   'telefone', 'tipo_telefone', 'endereco', 'lat', 'lng',
 ]);
 
@@ -85,7 +87,16 @@ export function abrirBanco(caminho = 'dados/coleta.db') {
   const db = new DatabaseSync(caminho);
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(ESQUEMA);
+  migrar(db);
   return db;
+}
+
+// Acrescenta colunas novas em bancos criados por versões anteriores.
+function migrar(db) {
+  const colunas = new Set(db.prepare('PRAGMA table_info(estabelecimentos)').all().map((c) => c.name));
+  for (const c of ['whatsapp_id', 'lid']) {
+    if (!colunas.has(c)) db.exec(`ALTER TABLE estabelecimentos ADD COLUMN ${c} TEXT`);
+  }
 }
 
 function registroDaLinha(linha) {
@@ -93,8 +104,9 @@ function registroDaLinha(linha) {
 }
 
 export function salvarEstabelecimento(db, reg) {
-  const candidatos = db.prepare('SELECT * FROM estabelecimentos WHERE cidade = ?').all(reg.cidade);
-  const existente = candidatos.find((l) => mesmoEstabelecimento(registroDaLinha(l), reg));
+  // Mesmo telefone = mesmo estabelecimento, em qualquer cidade.
+  const existente = (reg.telefone && db.prepare('SELECT * FROM estabelecimentos WHERE telefone = ? ORDER BY id LIMIT 1').get(reg.telefone))
+    || db.prepare('SELECT * FROM estabelecimentos WHERE cidade = ?').all(reg.cidade).find((l) => mesmoEstabelecimento(registroDaLinha(l), reg));
 
   if (existente) {
     const vazios = Object.entries(CAMPOS).filter(([campo, coluna]) => reg[campo] != null && reg[campo] !== '' && existente[coluna] == null);
@@ -139,6 +151,28 @@ export function buscarPorTelefone(db, telefone) {
 // O WhatsApp às vezes registra celulares antigos sem o 9º dígito; por isso guardamos o id que ele devolve.
 export function buscarPorWhatsappId(db, whatsappId) {
   return db.prepare('SELECT * FROM estabelecimentos WHERE whatsapp_id = ?').get(whatsappId);
+}
+
+// Acha quem mandou a mensagem: por id do WhatsApp/LID ou pelo telefone (com e sem 9º dígito).
+export function encontrarPorContato(db, { ids = [], numeros = [] }) {
+  for (const id of ids.filter(Boolean)) {
+    const e = db.prepare('SELECT * FROM estabelecimentos WHERE whatsapp_id = ? OR lid = ? ORDER BY id LIMIT 1').get(id, id);
+    if (e) return e;
+  }
+  for (const n of numeros.filter(Boolean)) {
+    for (const v of variacoesDoNumero(n)) {
+      const e = buscarPorTelefone(db, v);
+      if (e) return e;
+    }
+  }
+  return undefined;
+}
+
+// Opt-out vale para todo cadastro com o mesmo número/id.
+export function marcarOptout(db, { telefone, whatsapp_id: whatsappId, lid }) {
+  db.prepare(`UPDATE estabelecimentos SET optout = 1, status = 'optout'
+    WHERE (telefone IS NOT NULL AND telefone = ?) OR (whatsapp_id IS NOT NULL AND whatsapp_id = ?) OR (lid IS NOT NULL AND lid = ?)`)
+    .run(telefone ?? null, whatsappId ?? null, lid ?? null);
 }
 
 export function atualizarEstabelecimento(db, id, campos) {

@@ -5,18 +5,27 @@ import config from '../../config/config.js';
 import { montarMensagem } from '../../config/mensagens.js';
 import {
   abrirBanco, listarEstabelecimentos, atualizarEstabelecimento, registrarMensagem,
-  salvarEstabelecimento, buscarPorTelefone, buscarPorWhatsappId, lerAjuste, gravarAjuste,
+  salvarEstabelecimento, encontrarPorContato, marcarOptout, lerAjuste, gravarAjuste,
 } from '../db.js';
 import { dentroDaJanela, limiteDoDia, proximoEnvio } from '../agenda.js';
 import { ehOptout } from '../optout.js';
-import { proximaTarefa, enviadosNoDia, respostasManuaisPendentes } from './fila.js';
+import { proximaTarefa, enviadosNoDia, respostasManuaisPendentes, MAX_TENTATIVAS_MANUAL } from './fila.js';
 import { proximaTarefaRemold } from '../remold.js';
-import { criarCliente, verificarNumero, enviar, variacoesDoNumero } from './cliente.js';
+import { criarCliente, verificarNumero, enviar, telefoneDoLid } from './cliente.js';
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 const modoTeste = process.argv.includes('--teste');
 const campanha = process.argv.includes('--campanha') ? process.argv[process.argv.indexOf('--campanha') + 1] : 'coleta';
 const CONFIRMACAO_OPTOUT = 'Certo, não enviaremos mais mensagens. Obrigado!';
+
+// Não deixa sair mensagem com campos de configuração em branco.
+const faltando = [];
+if (/PREENCHER/.test(config.empresa.nome)) faltando.push('empresa.nome');
+if (campanha === 'remold' && /PREENCHER/.test(config.ofertaRemold)) faltando.push('ofertaRemold');
+if (faltando.length) {
+  console.error(`Preencha em config/config.js antes de enviar: ${faltando.join(', ')}`);
+  process.exit(1);
+}
 
 const db = abrirBanco();
 const client = await criarCliente();
@@ -25,20 +34,31 @@ const client = await criarCliente();
 client.on('message', async (msg) => {
   try {
     if (msg.fromMe || msg.from.endsWith('@g.us') || msg.from === 'status@broadcast') return;
-    const contato = await msg.getContact();
-    let est = buscarPorWhatsappId(db, msg.from);
-    if (!est) {
-      for (const n of variacoesDoNumero(contato.number)) {
-        est = buscarPorTelefone(db, n);
-        if (est) break;
-      }
+    const ids = [msg.from];
+    const numeros = [];
+    if (msg.from.endsWith('@lid')) {
+      const pn = await telefoneDoLid(client, msg.from);
+      if (pn) { ids.push(pn); numeros.push(pn.split('@')[0]); }
+    } else {
+      numeros.push(msg.from.split('@')[0]);
     }
-    if (!est) return;
-    if (!est.whatsapp_id) atualizarEstabelecimento(db, est.id, { whatsapp_id: msg.from });
+    try {
+      const contato = await msg.getContact();
+      if (contato?.id?.user) numeros.push(contato.id.user);
+    } catch {
+      // segue com o que já temos
+    }
+    const est = encontrarPorContato(db, { ids, numeros });
+    if (!est) {
+      console.log(`Mensagem de contato fora da lista (${msg.from}): ${msg.body}`);
+      return;
+    }
+    if (msg.from.endsWith('@lid') && !est.lid) atualizarEstabelecimento(db, est.id, { lid: msg.from });
+    else if (!msg.from.endsWith('@lid') && !est.whatsapp_id) atualizarEstabelecimento(db, est.id, { whatsapp_id: msg.from });
 
     registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'recebida', texto: msg.body || '[mídia]', campanha: null });
     if (ehOptout(msg.body)) {
-      atualizarEstabelecimento(db, est.id, { optout: 1, status: 'optout' });
+      marcarOptout(db, { telefone: est.telefone, whatsapp_id: est.whatsapp_id, lid: msg.from.endsWith('@lid') ? msg.from : est.lid });
       await client.sendMessage(msg.from, CONFIRMACAO_OPTOUT);
       registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto: CONFIRMACAO_OPTOUT, campanha: 'sistema' });
       console.log(`Opt-out: ${est.nome} (${est.cidade})`);
@@ -92,18 +112,21 @@ if (modoTeste) {
   const inicio = new Date(`${config.envio.inicioCampanha}T08:30:00-03:00`);
 
   for (;;) {
-    for (const r of respostasManuaisPendentes(db)) {
+    const pausado = lerAjuste(db, 'envios_pausados') === '1';
+    for (const r of pausado ? [] : respostasManuaisPendentes(db)) {
       try {
         await enviar(client, r.whatsapp_id, r.texto);
         registrarMensagem(db, { estabelecimentoId: r.estabelecimento_id, direcao: 'enviada', texto: r.texto, campanha: 'manual' });
         db.prepare("UPDATE fila_envio SET status = 'enviada' WHERE id = ?").run(r.id);
       } catch (e) {
-        console.warn(`Falha na resposta manual ${r.id}: ${e.message}`);
+        const tentativa = r.tentativa + 1;
+        db.prepare('UPDATE fila_envio SET tentativa = ?, status = ? WHERE id = ?')
+          .run(tentativa, tentativa >= MAX_TENTATIVAS_MANUAL ? 'falhou' : 'pendente', r.id);
+        console.warn(`Falha na resposta manual ${r.id} (tentativa ${tentativa}): ${e.message}`);
       }
     }
 
     const agora = new Date();
-    const pausado = lerAjuste(db, 'envios_pausados') === '1';
     if (!pausado && dentroDaJanela(agora) && agora >= proximoHorario && enviadosNoDia(db, agora) < limiteDoDia(inicio, agora)) {
       const tarefa = campanha === 'remold' ? proximaTarefaRemold(db) : proximaTarefa(db, agora);
       if (tarefa) {

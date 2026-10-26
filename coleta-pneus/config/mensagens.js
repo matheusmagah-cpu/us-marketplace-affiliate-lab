@@ -29,7 +29,7 @@ export function montarMensagem(tipo, est, cfg, rng = Math.random) {
     cidade: est.cidade,
     empresa: cfg.empresa.nome,
     cidade_base: cfg.empresa.cidadeBase,
-    preco: 'R$1,50',
+    preco: 'R$' + (cfg.precoPorPneu ?? 1.5).toFixed(2).replace('.', ','),
     oferta: cfg.ofertaRemold,
   };
   const texto = modelo.replace(/\{(\w+)\}/g, (_, chave) => valores[chave] ?? '');

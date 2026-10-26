@@ -27,14 +27,21 @@ export function proximaTarefa(db, agora) {
       return { tipo: 'lembrete', estabelecimento: e };
     }
   }
-  const novo = db.prepare(`SELECT * FROM estabelecimentos
-    WHERE status = 'pronto' AND tem_whatsapp = 1 AND optout = 0
-    ORDER BY cidade, id LIMIT 1`).get();
+  // Pula quem tem o mesmo número de outro cadastro já contatado ou que pediu para sair.
+  const novo = db.prepare(`SELECT * FROM estabelecimentos e
+    WHERE e.status = 'pronto' AND e.tem_whatsapp = 1 AND e.optout = 0
+      AND NOT EXISTS (SELECT 1 FROM estabelecimentos o
+        WHERE o.id <> e.id AND o.telefone = e.telefone
+          AND (o.optout = 1 OR o.status NOT IN ('pronto', 'sem_whatsapp')))
+    ORDER BY e.cidade, e.id LIMIT 1`).get();
   return novo ? { tipo: 'coleta', estabelecimento: novo } : null;
 }
+
+export const MAX_TENTATIVAS_MANUAL = 3;
 
 export function respostasManuaisPendentes(db) {
   return db.prepare(`SELECT f.*, e.whatsapp_id, e.telefone FROM fila_envio f
     JOIN estabelecimentos e ON e.id = f.estabelecimento_id
-    WHERE f.campanha = 'manual' AND f.status = 'pendente' ORDER BY f.id`).all();
+    WHERE f.campanha = 'manual' AND f.status = 'pendente' AND e.optout = 0 AND f.tentativa < ${MAX_TENTATIVAS_MANUAL}
+    ORDER BY f.id`).all();
 }
