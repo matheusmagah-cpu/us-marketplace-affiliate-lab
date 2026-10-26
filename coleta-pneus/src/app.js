@@ -44,18 +44,40 @@ function mapear(cidade) {
 criarApp(db, { usuario: env.PAINEL_USUARIO, senha: env.PAINEL_SENHA, mcpToken: env.MCP_TOKEN, aoMapear: mapear })
   .listen(3000, '127.0.0.1', () => console.log('Painel e MCP em http://127.0.0.1:3000'));
 
-const client = await criarCliente({
-  mostrarQrNoTerminal: false,
-  aoMudar: (estado, qr) => {
-    gravarAjuste(db, 'whatsapp_status', estado);
-    gravarAjuste(db, 'whatsapp_qr', qr ?? '');
-  },
-});
+let client = null;
+const aoMudar = (estado, qr) => {
+  gravarAjuste(db, 'whatsapp_status', estado);
+  gravarAjuste(db, 'whatsapp_qr', qr ?? '');
+};
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-robo = criarRobo({ db, client, anthropic: new Anthropic(), donoWhatsapp: env.DONO_WHATSAPP });
-client.on('message', robo.aoReceber);
+// Conecta o WhatsApp e reconecta sozinho se cair; o painel continua no ar mesmo sem WhatsApp.
+async function conectarWhatsapp() {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      const novo = await criarCliente({ mostrarQrNoTerminal: false, aoMudar });
+      novo.on('disconnected', async () => {
+        client = null;
+        robo = null;
+        await novo.destroy().catch(() => {});
+        await esperar(30000);
+        conectarWhatsapp();
+      });
+      client = novo;
+      robo = criarRobo({ db, client, anthropic: new Anthropic(), donoWhatsapp: env.DONO_WHATSAPP });
+      client.on('message', (msg) => robo?.aoReceber(msg));
+      await robo.verificarNovos();
+      return;
+    } catch (e) {
+      aoMudar('erro', null);
+      console.error(`Não consegui abrir o WhatsApp (tentativa ${tentativa}): ${e.message.split('\n')[0]}`);
+      await esperar(Math.min(10, tentativa) * 60000);
+    }
+  }
+}
 
 async function rotaDiaria() {
+  if (!robo) throw new Error('WhatsApp desconectado');
   const data = proximoDiaUtil(new Date());
   const coletas = listarColetas(db, { data }).filter((c) => c.status === 'agendada');
   const texto = textoRota(montarRota({ lat: config.empresa.lat, lng: config.empresa.lng }, coletas), data);
@@ -72,8 +94,8 @@ async function agendador() {
   for (const tarefa of tarefasDevidas(agora, ultimas)) {
     try {
       if (tarefa === 'rota_diaria') {
-        gravarAjuste(db, 'ultima_rota_diaria', dataLocalISO(agora));
         await rotaDiaria();
+        gravarAjuste(db, 'ultima_rota_diaria', dataLocalISO(agora));
       }
       if (tarefa === 'remapeamento') {
         gravarAjuste(db, 'ultimo_remapeamento', dataLocalISO(agora));
@@ -94,8 +116,8 @@ function repetir(fn, ms) {
   }, ms);
 }
 
-await robo.verificarNovos();
-repetir(robo.passoDeEnvio, 30 * 1000);
-repetir(robo.verificarNovos, 60 * 60 * 1000);
+conectarWhatsapp();
+repetir(() => robo?.passoDeEnvio(), 30 * 1000);
+repetir(() => robo?.verificarNovos(), 60 * 60 * 1000);
 repetir(agendador, 60 * 1000);
 console.log('Robô da coleta rodando.');

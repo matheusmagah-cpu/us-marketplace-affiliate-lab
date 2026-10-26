@@ -14,7 +14,7 @@
 <script type="module">
 import { api, montarCabecalho } from './comum.js';
 montarCabecalho();
-const NOMES = { conectado: 'Conectado ✅', aguardando_qr: 'Aguardando leitura do QR code', desconectado: 'Desconectado' };
+const NOMES = { conectado: 'Conectado ✅', aguardando_qr: 'Aguardando leitura do QR code', desconectado: 'Desconectado', erro: 'Erro ao abrir o WhatsApp no servidor (veja os logs; tentando de novo)' };
 async function atualizar() {
   const w = await api('/api/whatsapp');
   document.getElementById('estado').textContent = NOMES[w.status] || w.status;
