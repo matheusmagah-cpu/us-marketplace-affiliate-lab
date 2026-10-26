@@ -145,3 +145,43 @@ Status do estabelecimento: `mapeado → sem_whatsapp | pronto → enviado → re
 - Confirmar sistema operacional do computador e o chip separado.
 - Nome da empresa (para as mensagens). Saída das rotas definida: Av. Adalberto Barros Nunes, Retiro, Volta Redonda.
 - Texto e condições da campanha de remold.
+
+---
+
+## 15. Versão 2 — Nuvem e automação completa (aprovada em 26/10/2026)
+
+### Decisões do dono
+- **Número:** o WhatsApp Business principal da empresa (antigo, no nome do dono). Risco de bloqueio aceito; limites anti-bloqueio mantidos.
+- **Onde roda:** servidor grátis Oracle Cloud "Always Free", 24 h, sem depender do computador do dono.
+- **Código:** GitHub (este repositório). O servidor baixa o código do GitHub.
+- **Respostas automáticas:** Claude Haiku 5.5 via API da Anthropic (`claude-haiku-5-5`, ~US$0,10/US$0,50 por milhão de tokens; ~R$2–10/mês). Chave da API só no servidor (`.env`), nunca no repositório.
+- **Claude (sessão interativa) só sob demanda:** via conexão MCP para análises; o sistema não depende dele para funcionar.
+- **Só números de WhatsApp reais:** ninguém recebe mensagem sem confirmação pelo próprio WhatsApp.
+
+### Arquitetura v2
+Um único processo Node (`npm start` → `src/app.js`) no servidor, gerenciado pelo systemd, contendo:
+1. **Cliente WhatsApp** (sessão persistente no disco do servidor).
+2. **Agendador interno:** fila de envio (regras de §6), lembrete, campanha de remold automática (3 dias após `recolhido`), rota do dia seguinte às 17h enviada ao WhatsApp do dono, remapeamento semanal (segunda 6h).
+3. **Atendente automático (Claude Haiku 5.5):** cada resposta recebida é analisada e respondida.
+4. **Painel web** com login (usuário/senha do `.env`), inclui tela do QR code para conectar o WhatsApp.
+5. **Servidor MCP** (HTTP, em `/mcp`, protegido por token) para o Claude consultar e operar o sistema quando o dono pedir.
+6. **Caddy** na frente, com HTTPS automático usando o endereço `IP.sslip.io` (sem precisar comprar domínio).
+
+### Verificação de números (só números reais)
+- Testa no WhatsApp **celulares e fixos** (WhatsApp Business em fixo é comum).
+- Procura o WhatsApp oficial no **site** do estabelecimento (links `wa.me` / `api.whatsapp.com`); esse número tem prioridade.
+- **Confiança:** `alta` (conta comercial ou nome do perfil parecido com o da borracharia), `media` (tem WhatsApp, conta pessoal), `sem_whatsapp` (nunca recebe). A fila envia `alta` primeiro.
+- Número com erro de envio ou que responde "número errado"/"não é borracharia" vira `invalido` e nunca mais é contatado.
+
+### Atendente automático (regras fixas)
+- Saída estruturada: intenção (`aceitou`, `recusou`, `optout`, `pergunta`, `numero_errado`, `outro`), quantidade de pneus, data preferida, trabalha com remold, texto da resposta.
+- Preço sempre R$1,50 por pneu; nunca promete desconto, prazo ou coisa que não sabe; tom humano e curto; nunca diz que é robô se não for perguntado, e se perguntado não mente.
+- `aceitou` com data → agenda coleta (próximo dia útil se não houver data) e confirma.
+- `pergunta` fora do escopo ou dúvida → responde que vai confirmar e **avisa o dono no WhatsApp**.
+- Opt-out sempre detectado também pela regra de §6 (não depende só da IA).
+- Se a API falhar, nada é respondido automaticamente e o dono é avisado.
+
+### Operação
+- `deploy/instalar.sh` prepara o servidor Ubuntu (Node 24, dependências do Chromium, Caddy, serviço systemd).
+- `deploy/atualizar.sh` baixa a versão nova do GitHub e reinicia.
+- Segredos em `/opt/coleta-pneus/.env`: `ANTHROPIC_API_KEY`, `PAINEL_USUARIO`, `PAINEL_SENHA`, `MCP_TOKEN`, `DONO_WHATSAPP`, `MOTORISTA_WHATSAPP` (opcional).
