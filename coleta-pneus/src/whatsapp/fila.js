@@ -33,7 +33,7 @@ export function proximaTarefa(db, agora) {
       AND NOT EXISTS (SELECT 1 FROM estabelecimentos o
         WHERE o.id <> e.id AND o.telefone = e.telefone
           AND (o.optout = 1 OR o.status NOT IN ('pronto', 'sem_whatsapp')))
-    ORDER BY e.cidade, e.id LIMIT 1`).get();
+    ORDER BY CASE e.confianca WHEN 'alta' THEN 0 ELSE 1 END, e.cidade, e.id LIMIT 1`).get();
   return novo ? { tipo: 'coleta', estabelecimento: novo } : null;
 }
 

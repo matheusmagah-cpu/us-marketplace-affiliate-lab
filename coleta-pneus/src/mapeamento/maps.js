@@ -57,6 +57,7 @@ export async function buscarMaps(page, cidade, termo) {
     const endereco = (await atributoOuNada(botaoEndereco, 'aria-label'))?.replace(/^Endereço:\s*/, '')
       ?? await textoOuNada(botaoEndereco);
     const idTelefone = await atributoOuNada(page.locator('button[data-item-id^="phone:tel:"]'), 'data-item-id');
+    const site = await atributoOuNada(page.locator('a[data-item-id="authority"]'), 'href');
     const telefoneBruto = idTelefone?.replace('phone:tel:', '');
     const notaTexto = await textoOuNada(page.locator('div.F7nice span[aria-hidden="true"]'));
     const avaliacoesTexto = await textoOuNada(page.locator('div.F7nice span[aria-label*="avalia"]'));
@@ -80,6 +81,7 @@ export async function buscarMaps(page, cidade, termo) {
       nota: notaTexto ? Number(notaTexto.replace(',', '.')) : undefined,
       avaliacoes: avaliacoesTexto ? Number(avaliacoesTexto.replace(/\D/g, '')) : undefined,
       linkMaps: page.url(),
+      site: site ?? undefined,
     });
   }
   return registros;

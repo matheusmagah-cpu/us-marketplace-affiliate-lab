@@ -10,7 +10,7 @@ import {
 import { montarRota, valorColeta } from '../rota.js';
 
 const STATUS_VALIDOS = new Set([
-  'pronto', 'sem_whatsapp', 'enviado', 'respondeu', 'aceitou', 'recusou', 'optout', 'coleta_agendada', 'recolhido',
+  'pronto', 'sem_whatsapp', 'enviado', 'respondeu', 'aceitou', 'recusou', 'optout', 'coleta_agendada', 'recolhido', 'invalido',
 ]);
 const REMOLD_VALIDOS = new Set(['sim', 'nao', 'desconhecido']);
 

@@ -16,7 +16,7 @@ export function el(tag, texto, atributos = {}) {
 
 export const NOMES_STATUS = {
   pronto: 'Pronto para contatar', sem_whatsapp: 'Sem WhatsApp', enviado: 'Mensagem enviada', respondeu: 'Respondeu',
-  aceitou: 'Aceitou', recusou: 'Recusou', optout: 'Pediu para sair', coleta_agendada: 'Coleta agendada', recolhido: 'Recolhido',
+  aceitou: 'Aceitou', recusou: 'Recusou', optout: 'Pediu para sair', coleta_agendada: 'Coleta agendada', recolhido: 'Recolhido', invalido: 'Número inválido',
 };
 
 export const reais = (v) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
