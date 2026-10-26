@@ -1,0 +1,5 @@
+# Endereço público com HTTPS automático, sem precisar comprar domínio.
+DOMINIO {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+}

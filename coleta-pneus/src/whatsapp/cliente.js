@@ -1,17 +1,26 @@
 // Conexão com o WhatsApp Web (biblioteca não oficial whatsapp-web.js).
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
+import { existsSync } from 'node:fs';
+import { chromium } from 'playwright';
 
 export { variacoesDoNumero } from '../telefone.js';
 
 const { Client, LocalAuth } = pkg;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Usa o Chromium do Playwright (funciona também em servidor ARM, como o da Oracle grátis).
+function caminhoDoNavegador() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+  const doPlaywright = chromium.executablePath();
+  return existsSync(doPlaywright) ? doPlaywright : undefined;
+}
+
 // aoMudar(estado, qr) é chamado com 'aguardando_qr' (e o texto do QR), 'conectado' e 'desconectado'.
 export async function criarCliente({ aoMudar = () => {}, mostrarQrNoTerminal = true } = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({ dataPath: 'dados/sessao-whatsapp' }),
-    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] },
+    puppeteer: { headless: true, executablePath: caminhoDoNavegador(), args: ['--no-sandbox', '--disable-dev-shm-usage'] },
   });
   client.on('qr', (qr) => {
     aoMudar('aguardando_qr', qr);

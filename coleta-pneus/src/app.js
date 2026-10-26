@@ -1,6 +1,5 @@
 // Programa completo para a nuvem: npm start
 // Lê os segredos do arquivo .env (veja .env.exemplo).
-import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import Anthropic from '@anthropic-ai/sdk';
 import config from '../config/config.js';
@@ -14,8 +13,7 @@ import { proximoDiaUtil } from './atendente/decisao.js';
 import { dataLocalISO } from './agenda.js';
 import { verificarConfig } from './verificar-config.js';
 
-if (existsSync('.env')) process.loadEnvFile('.env');
-const env = process.env;
+const env = process.env; // o .env já foi lido por config/config.js
 const obrigatorios = ['ANTHROPIC_API_KEY', 'PAINEL_USUARIO', 'PAINEL_SENHA', 'MCP_TOKEN', 'DONO_WHATSAPP'];
 const faltando = obrigatorios.filter((k) => !env[k]);
 if (faltando.length) {

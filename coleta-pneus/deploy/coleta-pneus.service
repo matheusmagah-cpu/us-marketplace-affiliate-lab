@@ -1,0 +1,16 @@
+[Unit]
+Description=Coleta de Pneus (robô WhatsApp + painel + MCP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/coleta/coleta-pneus
+Environment=TZ=America/Sao_Paulo
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/app.js
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

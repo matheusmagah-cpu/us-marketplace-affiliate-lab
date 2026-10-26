@@ -1,5 +1,11 @@
 // Configuração do sistema de coleta de pneus.
-// Edite os campos marcados com PREENCHER antes de usar.
+// Na nuvem, os campos da empresa vêm do arquivo .env (veja .env.exemplo).
+// No computador, você pode editar direto os campos marcados com PREENCHER.
+import { existsSync } from 'node:fs';
+
+if (existsSync('.env')) process.loadEnvFile('.env');
+const env = process.env;
+const numero = (v, padrao) => (v != null && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : padrao);
 
 const config = {
   uf: 'RJ',
@@ -35,13 +41,13 @@ const config = {
   precoPorPneu: 1.5,
 
   empresa: {
-    nome: 'PREENCHER',
+    nome: env.EMPRESA_NOME || 'PREENCHER',
     cidadeBase: 'Volta Redonda',
     // Ponto de saída das rotas. Confira as coordenadas no Google Maps
     // (clique com o botão direito no local > copie os números).
     endereco: 'Av. Adalberto Barros Nunes, Retiro, Volta Redonda - RJ',
-    lat: -22.4985,
-    lng: -44.1300,
+    lat: numero(env.EMPRESA_LAT, -22.4985),
+    lng: numero(env.EMPRESA_LNG, -44.1300),
   },
 
   envio: {
@@ -63,14 +69,14 @@ const config = {
     diasUteisLembrete: 3,
     falhasParaParar: 3,
     // Data em que a campanha começou (usada para subir o limite diário aos poucos).
-    inicioCampanha: '2026-11-02',
+    inicioCampanha: env.INICIO_CAMPANHA || '2026-11-02',
   },
 
   // Seus números para o modo de teste (formato 55DDNNNNNNNNN).
-  numerosTeste: [],
+  numerosTeste: (env.NUMEROS_TESTE || '').split(',').map((n) => n.trim()).filter(Boolean),
 
   // Texto da oferta de remold usado na campanha da fase 2.
-  ofertaRemold: 'PREENCHER (ex.: pneus remold aro 13 a 15, a partir de R$ X, entrega na região)',
+  ofertaRemold: env.OFERTA_REMOLD || 'PREENCHER (ex.: pneus remold aro 13 a 15, a partir de R$ X, entrega na região)',
 };
 
 export default config;
