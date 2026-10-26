@@ -24,6 +24,9 @@ export function criarRobo({
 }) {
   const envio = { msPorCaractere };
   const pendentes = new Map(); // estabelecimento_id -> timer de agrupamento
+  const emAtendimento = new Set(); // contatos com o Claude decidindo agora
+  const chegouNova = new Set(); // contatos que mandaram mensagem durante a decisão
+  let filaClaude = Promise.resolve(); // um Claude por vez, para não estourar a memória do servidor
   const avisosDados = new Set(); // evita repetir o mesmo aviso ao dono
   let donoJid = null;
 
@@ -50,21 +53,56 @@ export function criarRobo({
     registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto, campanha });
   }
 
+  function emSerie(fn) {
+    const p = filaClaude.then(fn, fn);
+    filaClaude = p.catch(() => {});
+    return p;
+  }
+
+  // Relê o contato: pode ter saído, ficado inválido ou o dono assumido enquanto o Claude pensava.
+  function contatoLiberado(estId) {
+    const est = obterEstabelecimento(db, estId);
+    if (!est || est.optout || est.status === 'invalido') return { est: null, trava: null };
+    const trava = podeResponder(db, est, new Date());
+    return trava.ok ? { est, trava: null } : { est: null, trava: { est, motivo: trava.motivo } };
+  }
+
   async function responder(estId) {
     pendentes.delete(estId);
-    const est = obterEstabelecimento(db, estId);
-    if (!est || est.optout || est.status === 'invalido') return;
-    const trava = podeResponder(db, est, new Date());
-    if (!trava.ok) return tratarTrava(est, trava.motivo);
+    if (emAtendimento.has(estId)) return chegouNova.add(estId); // a decisão em andamento é refeita com a mensagem nova
+    emAtendimento.add(estId);
     try {
-      const decisao = await decidir({ est, historico: listarMensagens(db, estId).slice(-20), hoje: new Date() });
-      const { resposta, avisarDono: aviso } = aplicarDecisao(db, est, decisao, new Date());
-      if (resposta) await enviarPara(est, resposta, 'atendente');
-      if (aviso) await avisarDono(aviso);
-      log.log(`Atendente: ${est.nome} (${est.cidade}) -> ${decisao.intencao}`);
-    } catch (e) {
-      log.warn(`Atendente falhou para ${est.nome}: ${e.message}`);
-      await avisarDono(`O atendimento automático não respondeu ${est.nome} (${est.cidade}). Responda pelo painel ou pelo celular. Motivo: ${e.message}`);
+      for (;;) {
+        chegouNova.delete(estId);
+        const antes = contatoLiberado(estId);
+        if (!antes.est) return antes.trava && tratarTrava(antes.trava.est, antes.trava.motivo);
+        let decisao;
+        try {
+          decisao = await emSerie(() => decidir({ est: antes.est, historico: listarMensagens(db, estId).slice(-20), hoje: new Date() }));
+        } catch (e) {
+          log.warn(`Atendente falhou para ${antes.est.nome}: ${e.message}`);
+          await avisarDono(`O atendimento automático não respondeu ${antes.est.nome} (${antes.est.cidade}). Responda pelo painel ou pelo celular. Motivo: ${e.message}`);
+          return;
+        }
+        if (chegouNova.has(estId)) continue; // chegou mensagem nova: decide de novo com a conversa completa
+        const { est } = contatoLiberado(estId);
+        if (!est) return;
+        const { resposta, avisarDono: aviso } = aplicarDecisao(db, est, decisao, new Date());
+        if (resposta) {
+          try {
+            await enviarPara(est, resposta, 'atendente');
+          } catch (e) {
+            // O banco já foi atualizado: a resposta vai para a fila e é reenviada em até 30 s.
+            db.prepare("INSERT INTO fila_envio (estabelecimento_id, campanha, texto) VALUES (?, 'manual', ?)").run(est.id, resposta);
+            log.warn(`Resposta para ${est.nome} ficou na fila: ${e.message}`);
+          }
+        }
+        if (aviso) await avisarDono(aviso);
+        log.log(`Atendente: ${est.nome} (${est.cidade}) -> ${decisao.intencao}`);
+        return;
+      }
+    } finally {
+      emAtendimento.delete(estId);
     }
   }
 
@@ -95,9 +133,11 @@ export function criarRobo({
     }
 
     registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'recebida', texto: m.texto, campanha: null, dataHora: m.quando });
+    if (est.optout || est.status === 'invalido') return; // já saiu: só registra, nunca responde
 
     if (ehOptout(m.texto)) {
       marcarOptout(db, { telefone: est.telefone, whatsapp_id: est.whatsapp_id, lid: est.lid || (m.jid.endsWith('@lid') ? m.jid : null) });
+      if (podeResponder(db, est).motivo === 'nao_prospectado') return; // nunca falamos com ele: só marca
       try {
         await conexao.enviarTexto(m.jid, CONFIRMACAO_OPTOUT, { msPorCaractere: 0 });
         registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto: CONFIRMACAO_OPTOUT, campanha: 'sistema' });
@@ -106,8 +146,8 @@ export function criarRobo({
       }
       return;
     }
-    if (est.optout || est.status === 'invalido') return;
 
+    if (emAtendimento.has(est.id)) chegouNova.add(est.id);
     clearTimeout(pendentes.get(est.id));
     pendentes.set(est.id, setTimeout(() => responder(est.id), esperaAgruparMs));
   }
@@ -159,6 +199,9 @@ export function criarRobo({
     const { tipo, estabelecimento: e } = tarefa;
     try {
       const texto = tipo === 'coleta' ? await primeiraMensagem(e) : montarMensagem(tipo, e, config);
+      // A 1ª mensagem do Claude pode levar até 1 min: confere de novo antes de enviar.
+      const atual = obterEstabelecimento(db, e.id);
+      if (!atual || atual.optout || atual.status === 'invalido' || lerAjuste(db, 'envios_pausados') === '1' || !dentroDaJanela(new Date())) return;
       await enviarPara(e, texto, tipo);
       if (tipo === 'coleta') atualizarEstabelecimento(db, e.id, { status: 'enviado' });
       log.log(`[${agora.toLocaleString('pt-BR')}] ${tipo} -> ${e.nome} (${e.cidade})`);

@@ -88,3 +88,9 @@ test('interpretar lança erro quando a API falha ou recusa', async () => {
   const recusa = { messages: { parse: async () => ({ stop_reason: 'refusal', parsed_output: null }) } };
   await assert.rejects(interpretar(recusa, { est: { nome: 'A', cidade: 'Q' }, historico: [], hoje: agora }), ErroAtendente);
 });
+
+test('coleta pedida para sábado vai para o próximo dia útil (a rota só cobre seg–sex)', () => {
+  const { db, est } = novo();
+  aplicarDecisao(db, est, { ...base, intencao: 'aceitou', qtd_pneus: 10, data_coleta: '2026-11-07' }, agora);
+  assert.equal(listarColetas(db, { estabelecimentoId: est.id })[0].data_prevista, '2026-11-09');
+});

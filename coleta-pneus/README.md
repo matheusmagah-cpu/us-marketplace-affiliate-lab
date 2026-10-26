@@ -91,7 +91,7 @@ O instalador coloca Node.js, Claude Code, o navegador do mapeamento, HTTPS (Cadd
 - Manda a 1ª mensagem (escrita pelo Claude, com o nome da borracharia e o preço) só de **segunda a sexta, 8h30–17h30, e sábado, 8h30–12h**.
 - Começa com **20 mensagens por dia**, sobe 10 por semana até 60, com **3 a 9 minutos** entre elas e "digitando…".
 - **1 lembrete** só, 3 dias úteis depois, para quem não respondeu.
-- Responde em 5–10 segundos, agenda a coleta (no dia pedido ou no próximo dia útil) e confirma.
+- Responde em 5–10 segundos (a qualquer hora em que a borracharia escrever), agenda a coleta em dia útil (o pedido, ou o próximo dia útil) e confirma.
 - Às **17h** (seg–sex) manda a **rota do dia seguinte** no seu WhatsApp, na ordem do caminho mais curto, com link do Google Maps.
 - **3 dias depois** de uma coleta feita, oferece o pneu remold.
 

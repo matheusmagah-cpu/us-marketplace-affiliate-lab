@@ -14,9 +14,9 @@ export function proximoDiaUtil(agora) {
   return dia;
 }
 
-// Data informada pelo cliente vale se for futura e não for domingo.
+// Data informada pelo cliente vale se for futura e dia útil (a rota diária só cobre segunda a sexta).
 function dataDaColeta(informada, agora) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(informada || '') && informada > dataLocalISO(agora) && diaDaSemana(informada) !== 0) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(informada || '') && informada > dataLocalISO(agora) && ![0, 6].includes(diaDaSemana(informada))) {
     return informada;
   }
   return proximoDiaUtil(agora);

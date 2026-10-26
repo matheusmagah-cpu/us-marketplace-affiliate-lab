@@ -41,3 +41,7 @@ test('lembrete só depois de 3 dias úteis, uma vez', () => {
   assert.ok(!precisaLembrete(env, d('2026-11-20T10:00:00-03:00'), true, false));
   assert.ok(!precisaLembrete(env, d('2026-11-20T10:00:00-03:00'), false, true));
 });
+
+test('antes do início da campanha o limite é zero', () => {
+  assert.equal(limiteDoDia(d('2026-11-02T08:30:00-03:00'), d('2026-10-30T09:00:00-03:00')), 0);
+});

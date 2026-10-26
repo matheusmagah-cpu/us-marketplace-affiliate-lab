@@ -107,3 +107,56 @@ test('falha do Claude avisa o dono e não inventa resposta', async () => {
   assert.equal(enviados[0].jid, '5524999990000@s.whatsapp.net');
   assert.ok(enviados[0].texto.includes('limite da assinatura'));
 });
+
+test('"sair" enquanto o Claude decide: a resposta não é enviada', async () => {
+  let liberar;
+  const { db, id, robo, enviados, msg } = cenario({
+    decidir: () => new Promise((r) => { liberar = () => r({ ...base, intencao: 'aceitou', qtd_pneus: 10 }); }),
+  });
+  await robo.aoMensagem(msg('oi'));
+  await espera();
+  await robo.aoMensagem(msg('sair'));
+  liberar();
+  await espera();
+  assert.equal(obterEstabelecimento(db, id).optout, 1);
+  assert.equal(listarColetas(db, { estabelecimentoId: id }).length, 0);
+  assert.ok(enviados.every((e) => !e.texto.startsWith('Combinado')));
+});
+
+test('mensagem nova durante a decisão: decide de novo e responde uma vez só', async () => {
+  const liberar = [];
+  const { robo, enviados, msg, chamadas } = cenario({
+    decidir: () => new Promise((r) => liberar.push(() => r({ ...base, intencao: 'pergunta', resposta: 'Claro!' }))),
+  });
+  await robo.aoMensagem(msg('oi'));
+  await espera();
+  await robo.aoMensagem(msg('quanto paga?'));
+  await espera();
+  liberar.shift()();
+  await espera();
+  liberar.shift()();
+  await espera();
+  assert.equal(chamadas(), 2);
+  assert.equal(enviados.length, 1);
+});
+
+test('contato que já saiu não recebe confirmação de novo (sem loop com resposta automática)', async () => {
+  const { db, id, robo, enviados, msg } = cenario();
+  atualizarEstabelecimento(db, id, { optout: 1 });
+  await robo.aoMensagem(msg('sair'));
+  await espera();
+  assert.equal(enviados.length, 0);
+});
+
+test('falha ao enviar a resposta deixa ela na fila para reenviar', async () => {
+  const { db, msg } = cenario();
+  const r2 = criarRobo({
+    db, decidir: async () => ({ ...base, intencao: 'aceitou', qtd_pneus: 5 }), log: { log() {}, warn() {} }, esperaAgruparMs: 0, msPorCaractere: 0,
+    conexao: { estaConectado: () => true, telefoneDoLid: async () => null, numeroNoWhatsapp: async () => ({}), enviarTexto: async () => { throw new Error('caiu'); } },
+  });
+  await r2.aoMensagem(msg('pode vir'));
+  await espera();
+  const fila = db.prepare("SELECT texto FROM fila_envio WHERE status = 'pendente'").all();
+  assert.equal(fila.length, 1);
+  assert.ok(fila[0].texto.startsWith('Combinado!'));
+});

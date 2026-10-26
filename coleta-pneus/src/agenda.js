@@ -58,6 +58,7 @@ export function proximoHorarioValido(data) {
 }
 
 export function limiteDoDia(dataInicioCampanha, hoje) {
+  if (hoje < dataInicioCampanha) return 0; // campanha ainda não começou
   const dias = Math.max(0, Math.floor((hoje - dataInicioCampanha) / DIA));
   const semanas = Math.floor(dias / 7);
   return Math.min(E.teto, E.limiteInicial + semanas * E.incrementoSemanal);
