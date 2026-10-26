@@ -12,7 +12,8 @@
     "mapear": "node src/mapeamento/rodar.js",
     "exportar": "node src/exportar.js",
     "whatsapp": "node src/whatsapp/rodar.js",
-    "painel": "node src/painel/servidor.js"
+    "painel": "node src/painel/servidor.js",
+    "start": "node src/app.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

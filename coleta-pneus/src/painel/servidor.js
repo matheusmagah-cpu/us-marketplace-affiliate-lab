@@ -1,5 +1,10 @@
 // Painel local: npm run painel  ->  http://localhost:3000
 import express from 'express';
+import { timingSafeEqual } from 'node:crypto';
+import QRCode from 'qrcode';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { criarMcp } from '../mcp.js';
+import { calcularFunil } from '../funil.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import config from '../../config/config.js';
@@ -14,31 +19,57 @@ const STATUS_VALIDOS = new Set([
 ]);
 const REMOLD_VALIDOS = new Set(['sim', 'nao', 'desconhecido']);
 
-const CONTA_FUNIL = {
-  comWhatsapp: (e) => e.tem_whatsapp === 1,
-  enviados: (e) => !['pronto', 'sem_whatsapp'].includes(e.status),
-  responderam: (e) => ['respondeu', 'aceitou', 'recusou', 'optout', 'coleta_agendada', 'recolhido'].includes(e.status),
-  aceitaram: (e) => ['aceitou', 'coleta_agendada', 'recolhido'].includes(e.status),
-  recolhidos: (e) => e.status === 'recolhido',
-};
+function iguais(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+}
 
-export function criarApp(db) {
+function exigirSenha(usuario, senha) {
+  return (req, res, next) => {
+    const [tipo, valor] = String(req.headers.authorization || '').split(' ');
+    if (tipo === 'Basic' && valor) {
+      const [u, ...resto] = Buffer.from(valor, 'base64').toString().split(':');
+      if (iguais(u, usuario) && iguais(resto.join(':'), senha)) return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="Coleta de Pneus", charset="UTF-8"').status(401).json({ erro: 'login necessário' });
+  };
+}
+
+// opcoes.usuario/senha ligam o login do painel; opcoes.mcpToken liga o endpoint /mcp.
+export function criarApp(db, opcoes = {}) {
   const app = express();
   app.use(express.json());
+
+  if (opcoes.mcpToken) {
+    app.post('/mcp', async (req, res) => {
+      const [tipo, token] = String(req.headers.authorization || '').split(' ');
+      if (tipo !== 'Bearer' || !iguais(token || '', opcoes.mcpToken)) return res.status(401).json({ erro: 'token inválido' });
+      const mcp = criarMcp(db, { aoMapear: opcoes.aoMapear });
+      const transporte = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+      res.on('close', () => { transporte.close(); mcp.close(); });
+      await mcp.connect(transporte);
+      await transporte.handleRequest(req, res, req.body);
+    });
+  }
+
+  if (opcoes.usuario && opcoes.senha) app.use(exigirSenha(opcoes.usuario, opcoes.senha));
   app.use(express.static(join(dirname(fileURLToPath(import.meta.url)), 'public')));
+
+  app.get('/api/whatsapp', async (req, res) => {
+    const qr = lerAjuste(db, 'whatsapp_qr');
+    res.json({
+      status: lerAjuste(db, 'whatsapp_status') || 'desconectado',
+      qr: qr ? await QRCode.toDataURL(qr) : null,
+    });
+  });
 
   app.get('/api/estabelecimentos', (req, res) => {
     res.json(listarEstabelecimentos(db, req.query));
   });
 
   app.get('/api/funil', (req, res) => {
-    const funil = {};
-    for (const e of listarEstabelecimentos(db)) {
-      const f = (funil[e.cidade] ??= { mapeados: 0, ...Object.fromEntries(Object.keys(CONTA_FUNIL).map((k) => [k, 0])) });
-      f.mapeados++;
-      for (const [k, conta] of Object.entries(CONTA_FUNIL)) if (conta(e)) f[k]++;
-    }
-    res.json(funil);
+    res.json(calcularFunil(listarEstabelecimentos(db)));
   });
 
   app.get('/api/estabelecimentos/:id', (req, res) => {

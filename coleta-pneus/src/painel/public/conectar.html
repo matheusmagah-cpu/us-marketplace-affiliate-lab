@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Conectar WhatsApp</title><link rel="stylesheet" href="estilo.css"></head>
+<body>
+<header><a href="/">Contatos</a><a href="/rotas.html">Rotas</a><a href="/conectar.html">WhatsApp</a><span class="espaco"></span><button id="pausa"></button></header>
+<main>
+  <div class="cartao">
+    <h2>Conexão do WhatsApp</h2>
+    <p id="estado" class="total"></p>
+    <img id="qr" alt="QR code do WhatsApp" hidden style="width:280px;max-width:100%">
+    <p id="ajuda" style="color:var(--suave)"></p>
+  </div>
+</main>
+<script type="module">
+import { api, montarCabecalho } from './comum.js';
+montarCabecalho();
+const NOMES = { conectado: 'Conectado ✅', aguardando_qr: 'Aguardando leitura do QR code', desconectado: 'Desconectado' };
+async function atualizar() {
+  const w = await api('/api/whatsapp');
+  document.getElementById('estado').textContent = NOMES[w.status] || w.status;
+  const img = document.getElementById('qr');
+  img.hidden = !w.qr;
+  if (w.qr) img.src = w.qr;
+  document.getElementById('ajuda').textContent = w.status === 'aguardando_qr'
+    ? 'No celular da empresa: WhatsApp > Aparelhos conectados > Conectar aparelho, e aponte para o código.'
+    : w.status === 'desconectado' ? 'O servidor vai tentar reconectar; se aparecer um QR code, leia de novo.' : '';
+}
+atualizar();
+setInterval(atualizar, 5000);
+</script>
+</body>
+</html>

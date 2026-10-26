@@ -7,18 +7,27 @@ export { variacoesDoNumero } from '../telefone.js';
 const { Client, LocalAuth } = pkg;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function criarCliente() {
+// aoMudar(estado, qr) é chamado com 'aguardando_qr' (e o texto do QR), 'conectado' e 'desconectado'.
+export async function criarCliente({ aoMudar = () => {}, mostrarQrNoTerminal = true } = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({ dataPath: 'dados/sessao-whatsapp' }),
-    puppeteer: { headless: true },
+    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] },
   });
   client.on('qr', (qr) => {
-    console.log('Escaneie o QR code com o WhatsApp do chip da coleta (Aparelhos conectados > Conectar aparelho):');
-    qrcode.generate(qr, { small: true });
+    aoMudar('aguardando_qr', qr);
+    if (mostrarQrNoTerminal) {
+      console.log('Escaneie o QR code com o WhatsApp (Aparelhos conectados > Conectar aparelho):');
+      qrcode.generate(qr, { small: true });
+    }
+  });
+  client.on('disconnected', (motivo) => {
+    console.warn('WhatsApp desconectado:', motivo);
+    aoMudar('desconectado', null);
   });
   const pronto = new Promise((resolve) => client.once('ready', resolve));
   await client.initialize();
   await pronto;
+  aoMudar('conectado', null);
   console.log('WhatsApp conectado.');
   return client;
 }
@@ -41,7 +50,7 @@ export async function telefoneDoLid(client, lid) {
 
 // Envia simulando digitação. Só lança erro se a mensagem em si falhar;
 // falhas de "digitando" e de limpeza depois do envio são ignoradas para não reenviar.
-export async function enviar(client, whatsappId, texto) {
+export async function enviar(client, whatsappId, texto, { msPorCaractere = 40 } = {}) {
   if (!whatsappId) throw new Error('contato sem id do WhatsApp');
   let chat = null;
   try {
@@ -50,7 +59,7 @@ export async function enviar(client, whatsappId, texto) {
   } catch {
     // segue sem "digitando"
   }
-  await esperar(Math.min(15000, 40 * texto.length));
+  await esperar(Math.min(15000, msPorCaractere * texto.length));
   await client.sendMessage(whatsappId, texto, { sendSeen: false });
   try {
     await chat?.clearState();

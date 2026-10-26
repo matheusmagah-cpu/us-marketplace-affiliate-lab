@@ -40,7 +40,7 @@ export function proximaTarefa(db, agora) {
 export const MAX_TENTATIVAS_MANUAL = 3;
 
 export function respostasManuaisPendentes(db) {
-  return db.prepare(`SELECT f.*, e.whatsapp_id, e.telefone FROM fila_envio f
+  return db.prepare(`SELECT f.*, e.whatsapp_id, e.lid, e.telefone FROM fila_envio f
     JOIN estabelecimentos e ON e.id = f.estabelecimento_id
     WHERE f.campanha = 'manual' AND f.status = 'pendente' AND e.optout = 0 AND f.tentativa < ${MAX_TENTATIVAS_MANUAL}
     ORDER BY f.id`).all();

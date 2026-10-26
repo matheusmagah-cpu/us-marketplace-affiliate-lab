@@ -20,7 +20,8 @@ function cidadesEscolhidas() {
 }
 
 const db = abrirBanco();
-const navegador = await chromium.launch({ headless: false });
+// No servidor (sem tela) rode com --headless.
+const navegador = await chromium.launch({ headless: process.argv.includes('--headless') });
 const page = await navegador.newPage({ locale: 'pt-BR' });
 
 for (const cidade of cidadesEscolhidas()) {
