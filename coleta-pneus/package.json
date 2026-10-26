@@ -1,0 +1,21 @@
+{
+  "name": "coleta-pneus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mapeamento e contato com borracharias para coleta de pneus e venda de remold",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "test": "node --test",
+    "mapear": "node src/mapeamento/rodar.js",
+    "exportar": "node src/exportar.js",
+    "whatsapp": "node src/whatsapp/rodar.js",
+    "painel": "node src/painel/servidor.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "playwright": "^1.49.1",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}
