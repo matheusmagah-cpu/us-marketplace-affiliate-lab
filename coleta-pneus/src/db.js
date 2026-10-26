@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { mesmoEstabelecimento } from './dedup.js';
 import { variacoesDoNumero } from './telefone.js';
+import { numeroDoJid } from './whatsapp/mensagem.js';
 
 const ESQUEMA = `
 CREATE TABLE IF NOT EXISTS estabelecimentos (
@@ -57,6 +58,18 @@ CREATE TABLE IF NOT EXISTS fila_envio (
   tentativa INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'pendente'
 );
+CREATE TABLE IF NOT EXISTS whatsapp_mensagens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_msg TEXT UNIQUE,
+  jid TEXT NOT NULL,
+  jid_alt TEXT,
+  numero TEXT,
+  de_mim INTEGER NOT NULL,
+  pelo_robo INTEGER NOT NULL DEFAULT 0,
+  texto TEXT,
+  quando TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wm_numero ON whatsapp_mensagens(numero, quando);
 CREATE TABLE IF NOT EXISTS ajustes (
   chave TEXT PRIMARY KEY,
   valor TEXT
@@ -89,6 +102,8 @@ export function abrirBanco(caminho = 'dados/coleta.db') {
   if (caminho !== ':memory:') mkdirSync(dirname(caminho), { recursive: true });
   const db = new DatabaseSync(caminho);
   db.exec('PRAGMA foreign_keys = ON;');
+  db.exec('PRAGMA busy_timeout = 5000;'); // o mapeamento escreve no mesmo banco em outro processo
+  if (caminho !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   db.exec(ESQUEMA);
   migrar(db);
   return db;
@@ -224,4 +239,23 @@ export function lerAjuste(db, chave) {
 
 export function gravarAjuste(db, chave, valor) {
   db.prepare('INSERT INTO ajustes (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor').run(chave, String(valor));
+}
+
+// Registro de todas as conversas do número (rastreamento). Repetir a mesma mensagem não duplica.
+export function registrarWhatsapp(db, m, { peloRobo = false } = {}) {
+  db.prepare(`INSERT OR IGNORE INTO whatsapp_mensagens (id_msg, jid, jid_alt, numero, de_mim, pelo_robo, texto, quando)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(m.id ?? null, m.jid, m.jidAlt ?? null, numeroDoJid(m.jid) ?? numeroDoJid(m.jidAlt), m.deMim ? 1 : 0, peloRobo ? 1 : 0, m.texto ?? null, m.quando);
+}
+
+export function lerChat(db, numero, limite = 200) {
+  return db.prepare(`SELECT de_mim, pelo_robo, texto, quando FROM whatsapp_mensagens
+    WHERE numero = ? ORDER BY quando DESC LIMIT ?`).all(numero, limite).reverse();
+}
+
+export function conversasRecentes(db, limite = 50) {
+  return db.prepare(`SELECT COALESCE(numero, jid) AS numero, COUNT(*) AS total, MAX(quando) AS ultima,
+      (SELECT texto FROM whatsapp_mensagens w2 WHERE COALESCE(w2.numero, w2.jid) = COALESCE(w.numero, w.jid) ORDER BY quando DESC LIMIT 1) AS ultima_mensagem,
+      (SELECT de_mim FROM whatsapp_mensagens w2 WHERE COALESCE(w2.numero, w2.jid) = COALESCE(w.numero, w.jid) ORDER BY quando DESC LIMIT 1) AS ultima_foi_minha
+    FROM whatsapp_mensagens w GROUP BY COALESCE(numero, jid) ORDER BY ultima DESC LIMIT ?`).all(limite);
 }
