@@ -1,21 +1,38 @@
 # Coleta de Pneus — Manual
 
-Sistema que **mapeia borracharias e auto centers** de 14 cidades vizinhas de Volta Redonda, **chama pelo WhatsApp** imitando uma pessoa, organiza tudo num **painel** e monta as **rotas de coleta** (R$1,50 por pneu). Depois faz a **campanha de pneu remold**.
+Sistema que **mapeia borracharias e auto centers** de 14 cidades vizinhas de Volta Redonda, **chama pelo WhatsApp** imitando uma pessoa, **responde sozinho com o Claude** (pela sua assinatura, sem chave de API), organiza tudo num **painel** e monta as **rotas de coleta** (R$1,50 por pneu). Depois faz a **campanha de pneu remold**.
 
-Pode rodar **na nuvem (recomendado, 24 h, com atendimento automático)** ou no seu computador Windows. Volta Redonda é só o ponto de saída das rotas (Av. Adalberto Barros Nunes, Retiro); não é prospectada.
+Volta Redonda é só o ponto de saída das rotas (Av. Adalberto Barros Nunes, Retiro); não é prospectada.
+
+Cidades: Barra Mansa, Pinheiral, Porto Real, Quatis, Resende, Itatiaia, Barra do Piraí, Piraí, Rio Claro, Valença, Mendes, Engenheiro Paulo de Frontin, Miguel Pereira e Vassouras.
+
+## Como funciona
+
+```
+Google Maps + OpenStreetMap ──► mapeamento (só números confirmados no WhatsApp)
+                                      │
+                                      ▼
+   servidor Oracle (24 h) ──► robô: 1ª mensagem escrita pelo Claude ──► WhatsApp Business (seu número)
+          │                         │                                         │
+          │                         └── resposta chega ──► Claude decide (5–10 s) ──► responde / agenda coleta
+          │
+          ├── painel (celular/navegador): contatos, conversas, coletas, rotas, QR do WhatsApp
+          ├── 17h: rota do dia seguinte no seu WhatsApp (e do motorista)
+          └── /mcp: você conversa comigo (Claude) sobre tudo quando quiser
+```
+
+- **WhatsApp:** conexão direta com os servidores do WhatsApp (biblioteca Baileys), sem navegador. Se cair, reconecta sozinha; a sessão fica salva e só pede QR de novo se você desconectar o aparelho no celular.
+- **Atendente:** o servidor chama o **Claude Code** com o seu token de assinatura. Cada resposta leva uns 7 segundos. O Claude só **interpreta** a mensagem (aceitou, recusou, quantos pneus, que dia, pergunta…); preço, datas e confirmação são montados pelo programa, então ele não inventa desconto nem promessa.
+- **Tudo fica registrado:** cada mensagem que entra ou sai do número (inclusive as que você manda pelo celular) vai para o banco, e você lê tudo pelo painel ou pelo MCP.
 
 ---
 
-# Parte A — Na nuvem (Oracle Cloud grátis), tudo automático
-
-Na nuvem o sistema fica ligado 24 h sem o seu computador: manda as mensagens, **responde sozinho com o Claude Haiku**, agenda as coletas, manda a **rota do dia seguinte no seu WhatsApp às 17h**, oferece remold 3 dias depois da coleta e remapeia as cidades toda segunda.
-
-## A1. Contas (uma vez)
+## 1. Contas (uma vez)
 
 1. **Oracle Cloud:** crie a conta em https://www.oracle.com/cloud/free/ (pede cartão só para verificar; o plano "Always Free" não cobra).
-2. **API da Anthropic:** em https://console.anthropic.com crie a conta, coloque US$5 de crédito (dura meses) e crie uma **API Key**. Guarde-a para colar no servidor. Não mande a chave por chat.
+2. **Claude:** a sua assinatura (Pro ou Max). Não precisa de chave de API.
 
-## A2. Criar o servidor
+## 2. Criar o servidor
 
 No painel da Oracle:
 
@@ -25,165 +42,120 @@ No painel da Oracle:
 4. Crie. Anote o **IP público**.
 5. Abra as portas do site: na página da instância, clique na **Subnet > Security List > Add Ingress Rules**: origem `0.0.0.0/0`, protocolo TCP, portas `80,443`.
 
-## A3. Instalar
+## 3. Instalar
 
-Entre no servidor (pelo **Cloud Shell** da Oracle, ícone `>_` no topo, ou pelo seu computador com `ssh ubuntu@IP`) e rode:
+Entre no servidor (pelo **Cloud Shell** da Oracle, ícone `>_` no topo, ou com `ssh ubuntu@IP`) e rode:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/matheusmagah-cpu/us-marketplace-affiliate-lab/feat/coleta-pneus/coleta-pneus/deploy/instalar.sh -o instalar.sh
 bash instalar.sh
 ```
 
-(Se o repositório for privado, primeiro faça `git clone` com um token do GitHub e rode `bash coleta-pneus/deploy/instalar.sh` de dentro da pasta.)
+O instalador coloca Node.js, Claude Code, o navegador do mapeamento, HTTPS (Caddy) e o serviço que liga sozinho. No final mostra o **endereço do painel** (ex.: `https://150-230-10-20.sslip.io`).
 
-O instalador mostra no final o **endereço do painel** (ex.: `https://150-230-10-20.sslip.io`).
+## 4. Configurar e ligar
 
-## A4. Configurar e ligar
+1. Gere o token do Claude **no servidor** (aparece um link: abra, entre com a sua conta e cole o código de volta):
 
-```
-nano /opt/coleta/coleta-pneus/.env
-```
+   ```
+   claude setup-token
+   ```
 
-Preencha `EMPRESA_NOME`, `DONO_WHATSAPP` (seu número pessoal, recebe rota e avisos), `ANTHROPIC_API_KEY`, `OFERTA_REMOLD` e, se quiser, `MOTORISTA_WHATSAPP`. A senha do painel já foi gerada (`PAINEL_SENHA`). Salve (`Ctrl+O`, Enter, `Ctrl+X`) e ligue:
+2. Abra a configuração:
 
-```
-sudo systemctl start coleta-pneus
-```
+   ```
+   nano /opt/coleta/coleta-pneus/.env
+   ```
 
-Abra o painel no navegador ou no celular, entre com usuário e senha, vá em **WhatsApp** e leia o QR code com o **WhatsApp Business da empresa** (Aparelhos conectados > Conectar aparelho). Pronto.
+   Preencha `EMPRESA_NOME`, `DONO_WHATSAPP` (seu número pessoal, recebe rota e avisos), `OFERTA_REMOLD` (com preço de verdade), `CLAUDE_CODE_OAUTH_TOKEN` (o token do passo 1) e, se quiser, `MOTORISTA_WHATSAPP`. A senha do painel e o token do MCP já foram gerados. Salve (`Ctrl+O`, Enter, `Ctrl+X`). O robô **não liga** enquanto esses campos estiverem vazios ou com valor de exemplo.
 
-Para o primeiro mapeamento, rode no servidor: `cd /opt/coleta/coleta-pneus && npm run mapear -- --headless` (ou peça ao Claude pela conexão MCP).
+3. Ligue:
 
-## A5. Conversar com o Claude sobre o sistema (MCP)
+   ```
+   sudo systemctl start coleta-pneus
+   ```
 
-Quando quiser uma análise, conecte o Claude Code ao sistema (troque o endereço e o token pelos seus):
+4. Abra o painel no navegador ou no celular, entre com usuário e senha (`PAINEL_USUARIO` / `PAINEL_SENHA` do `.env`), vá em **WhatsApp** e leia o QR code com o **WhatsApp Business da empresa** (Aparelhos conectados > Conectar aparelho). Só precisa fazer isso uma vez.
+
+5. Primeiro mapeamento (algumas horas, trabalha devagar de propósito):
+
+   ```
+   cd /opt/coleta/coleta-pneus && npm run mapear -- --headless
+   ```
+
+   Para conferir antes, comece por uma cidade: `npm run mapear -- --headless --cidade "Quatis"`. Depois o robô remapeia sozinho toda segunda.
+
+## 5. O que o robô faz sozinho
+
+- Confere quais números **têm WhatsApp de verdade**; quem não tem não recebe nada (aparece no painel em "Sem WhatsApp").
+- Manda a 1ª mensagem (escrita pelo Claude, com o nome da borracharia e o preço) só de **segunda a sexta, 8h30–17h30, e sábado, 8h30–12h**.
+- Começa com **20 mensagens por dia**, sobe 10 por semana até 60, com **3 a 9 minutos** entre elas e "digitando…".
+- **1 lembrete** só, 3 dias úteis depois, para quem não respondeu.
+- Responde em 5–10 segundos, agenda a coleta (no dia pedido ou no próximo dia útil) e confirma.
+- Às **17h** (seg–sex) manda a **rota do dia seguinte** no seu WhatsApp, na ordem do caminho mais curto, com link do Google Maps.
+- **3 dias depois** de uma coleta feita, oferece o pneu remold.
+
+### Travas de segurança
+
+- Só responde quem **foi prospectado** por ele. Clientes, amigos e família no mesmo número são ignorados.
+- Se **você** responder alguém pelo celular, o robô **fica quieto com aquele contato por 12 horas**.
+- No máximo 8 respostas automáticas por contato em 24 h, e para se a pessoa repetir a mesma mensagem (evita conversa infinita com outro robô). Nos dois casos você é avisado.
+- "Sair", "pare", "não quero", "pode parar"… → nunca mais recebe mensagem. Um "não" sozinho **não** conta como sair.
+- "Número errado" → marcado como inválido.
+- Se não souber responder, ou se o Claude falhar, diz que vai confirmar e **avisa você no WhatsApp**.
+- Se der 3 erros de envio seguidos, **pausa os envios** e avisa você.
+
+## 6. Painel
+
+- **Contatos:** funil por cidade, filtros e a lista. Clique no nome para abrir a ficha.
+- **Ficha:** conversa completa, responder, mudar status, marcar "trabalha com remold" e **agendar coleta** (data e quantidade).
+- **Rotas:** escolha a data e clique em **Gerar rota**. Depois da coleta, informe na ficha a quantidade real e clique em **Recolhido**.
+- **WhatsApp:** status da conexão e QR code.
+- **Pausar envios:** botão vermelho no topo.
+
+## 7. Falar comigo (Claude) sobre o sistema — MCP
+
+No seu computador, com o Claude Code instalado (troque o endereço e o token pelos seus; o token é o `MCP_TOKEN` do `.env`):
 
 ```
 claude mcp add --transport http coleta https://SEU-ENDERECO.sslip.io/mcp --header "Authorization: Bearer SEU_MCP_TOKEN"
 ```
 
-Depois é só pedir: "como está o funil?", "quem pediu para falar comigo?", "agenda coleta para a Borracharia X dia 12", "pausa os envios".
+Depois é só pedir em português. Ferramentas disponíveis:
 
-## A6. Manutenção
+| Pergunta | Ferramenta |
+|---|---|
+| "Como está o funil?" | `funil` |
+| "Quem respondeu?" / "Quem não respondeu há 2 dias?" | `responderam`, `sem_resposta` |
+| "Quais conversas mexeram hoje?" | `conversas_recentes` |
+| "Lê a conversa com 24 99999-8888" | `ler_chat`, `conversa` |
+| "Lista as borracharias de Resende" | `listar_contatos` |
+| "Agenda 40 pneus na Borracharia X dia 12" | `agendar_coleta` |
+| "Responde a Borracharia X dizendo…" | `responder` |
+| "Monta a rota de amanhã" | `rota` |
+| "Mapeia Valença de novo" | `mapear_cidade` |
+| "Pausa / retoma os envios" | `pausar`, `retomar` |
+
+## 8. Manutenção
 
 - Ver o que o robô está fazendo: `journalctl -u coleta-pneus -f`
 - Atualizar para a versão nova do GitHub: `bash /opt/coleta/coleta-pneus/deploy/atualizar.sh`
 - Cópia de segurança: a pasta `/opt/coleta/coleta-pneus/dados` (banco e sessão do WhatsApp). **Nunca** coloque essa pasta ou o `.env` no GitHub.
-
-## Regras do atendimento automático
-
-- Preço sempre R$1,50 por pneu; não oferece desconto, prazo ou forma de pagamento.
-- Se o contato aceitar, agenda a coleta (no dia pedido ou no próximo dia útil) e confirma.
-- "Sair", "não quero" etc. → nunca mais recebe mensagem. "Número errado" → número marcado como inválido.
-- Se não souber responder, diz que vai confirmar e **avisa você no WhatsApp**. Se a IA falhar, você também é avisado.
-- Só recebe mensagem quem tem WhatsApp confirmado. Contas comerciais e perfis com o nome da borracharia vão primeiro.
-
----
-
-# Parte B — No seu computador (Windows)
-
-## 1. Instalar (uma vez só)
-
-1. Instale o **Node.js 24 LTS** em https://nodejs.org (botão "LTS", avance até o fim).
-2. Baixe esta pasta `coleta-pneus` para o computador (ex.: `C:\coleta-pneus`).
-3. Abra o **Prompt de Comando** nessa pasta (na barra de endereço do Explorador, digite `cmd` e Enter) e rode:
-
-```
-npm install
-npx playwright install chromium
-```
-
-## 2. Configurar (uma vez só)
-
-Abra `config\config.js` no Bloco de Notas e preencha:
-
-- `empresa.nome` — nome que aparece nas mensagens.
-- `empresa.lat` e `empresa.lng` — coordenadas do ponto de saída. No Google Maps, clique com o botão direito no local da Av. Adalberto Barros Nunes e copie os dois números.
-- `numerosTeste` — 2 ou 3 números seus, no formato `5524999998888`.
-- `ofertaRemold` — texto da oferta de remold (medidas, preço, entrega).
-- `envio.inicioCampanha` — a data do primeiro envio real (`AAAA-MM-DD`).
-
-Os textos das mensagens ficam em `config\mensagens.js` e podem ser editados.
-
-## 3. Mapear as borracharias
-
-Comece por uma cidade pequena para conferir:
-
-```
-npm run mapear -- --cidade "Quatis"
-npm run exportar
-```
-
-Abra `dados\estabelecimentos.csv` no Excel e confira uns 10 nomes no Google Maps. Se estiver certo, rode todas as cidades (demora algumas horas; o navegador abre sozinho e trabalha devagar de propósito — não feche):
-
-```
-npm run mapear
-npm run exportar
-```
-
-## 4. Testar o WhatsApp com os seus números
-
-Use um **chip separado**, só para a coleta. No celular desse chip, abra o WhatsApp > **Aparelhos conectados** > **Conectar aparelho**.
-
-```
-npm run whatsapp -- --teste
-```
-
-Escaneie o QR code que aparece. Cada número de teste recebe uma mensagem. Responda **"sair"** de um deles: ele deve receber "Certo, não enviaremos mais mensagens" e aparecer como "Pediu para sair" no painel. Feche com `Ctrl+C`.
-
-## 5. Ligar a campanha de coleta
-
-```
-npm run whatsapp
-```
-
-Deixe a janela aberta. O robô:
-
-- confere quais telefones têm WhatsApp;
-- só envia de segunda a sexta das 8h30 às 17h30 e sábado das 8h30 às 12h;
-- começa com **20 mensagens por dia** e sobe 10 por semana até 60;
-- espera de 3 a 9 minutos entre mensagens e mostra "digitando…";
-- manda no máximo **1 lembrete**, 3 dias úteis depois, para quem não respondeu;
-- quem responder "sair", "não quero", "pode parar" etc. nunca mais recebe;
-- **pausa sozinho** se der 3 erros seguidos (sinal de problema no número).
-
-## 6. Painel
-
-Em outra janela do Prompt de Comando:
-
-```
-npm run painel
-```
-
-Abra **http://localhost:3000** no navegador.
-
-- **Contatos:** funil por cidade, filtros e a lista. Clique no nome para abrir a ficha.
-- **Ficha:** conversa, responder (o robô envia em até 30 segundos), mudar status, marcar "trabalha com remold" e **agendar coleta** (data e quantidade de pneus).
-- **Rotas:** escolha a data (e as cidades, se quiser) e clique em **Gerar rota**. Sai a lista na ordem do caminho mais curto, o link do Google Maps (até 10 paradas por link) e o total a receber. Depois da coleta, na ficha, informe a quantidade real e clique em **Recolhido**.
-- **Pausar envios:** botão vermelho no topo.
-
-Quem não tem WhatsApp aparece no filtro "Sem WhatsApp" para ligar.
-
-## 7. Campanha de remold (fase 2)
-
-Depois das primeiras coletas:
-
-```
-npm run whatsapp -- --campanha remold
-```
-
-Só recebe quem aceitou ou já fez coleta, e nunca quem pediu para sair. Mesmas regras de horário e limite.
+- Token do Claude expirou ou foi trocado: rode `claude setup-token` de novo, cole no `.env` e `sudo systemctl restart coleta-pneus`.
+- Prefere pagar por uso em vez da assinatura: `ATENDENTE=api` e `ANTHROPIC_API_KEY=` no `.env`.
 
 ## Cuidados
 
-- O WhatsApp usado aqui **não é o oficial**: existe risco de bloqueio do número. Por isso o chip separado, os limites e a personalização. Não aumente os limites no começo.
+- O WhatsApp usado aqui **não é o oficial**: existe risco de bloqueio do número. Os limites, os horários e a personalização existem para reduzir isso. **Não aumente os limites no começo.**
+- O uso pelo Claude conta dentro dos limites da sua assinatura e segue os termos da Anthropic.
 - O mapeamento usa o Google Maps de forma automatizada, o que vai contra os termos do Google; o volume é pequeno, mas o risco existe.
-- Os dados ficam só no seu computador, na pasta `dados\`. Faça cópia dela de vez em quando.
 
-## Para quem for mexer no código
+## Rodar no seu computador (opcional, para testes)
+
+Com Node.js 24 e o Claude Code instalados, nesta pasta: `npm install`, copie `.env.exemplo` para `.env` e preencha (incluindo `NUMEROS_TESTE`).
 
 ```
-npm test
+npm run whatsapp -- --teste   # manda a 1ª mensagem só para os seus números de teste e responde como faria de verdade
+npm run painel                # painel em http://localhost:3000
+npm test                      # testes da lógica
 ```
-
-Roda os testes da lógica (telefone, repetidos, horários, opt-out, fila, rotas, painel).
