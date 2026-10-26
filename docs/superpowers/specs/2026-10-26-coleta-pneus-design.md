@@ -185,3 +185,29 @@ Um único processo Node (`npm start` → `src/app.js`) no servidor, gerenciado p
 - `deploy/instalar.sh` prepara o servidor Ubuntu (Node 24, dependências do Chromium, Caddy, serviço systemd).
 - `deploy/atualizar.sh` baixa a versão nova do GitHub e reinicia.
 - Segredos em `/opt/coleta-pneus/.env`: `ANTHROPIC_API_KEY`, `PAINEL_USUARIO`, `PAINEL_SENHA`, `MCP_TOKEN`, `DONO_WHATSAPP`, `MOTORISTA_WHATSAPP` (opcional).
+
+---
+
+## 16. Versão 3 — Claude Code (assinatura) + Baileys (aprovada em 26/10/2026)
+
+Substitui, da versão 2: a conexão whatsapp-web.js (navegador) e o atendente pela API.
+
+### Decisões do dono
+- **Quem conversa:** o Claude, pela **assinatura** do dono, via Claude Code instalado no servidor (`claude -p`, autenticado com `CLAUDE_CODE_OAUTH_TOKEN` gerado por `claude setup-token`). Sem chave de API.
+- **Tempo de resposta:** ~5–10 s (espera de 5 s para juntar mensagens seguidas + resposta do modelo Haiku via assinatura + "digitando").
+- **Primeira mensagem de prospecção:** escrita pelo Claude, personalizada por estabelecimento, respeitando os limites anti-bloqueio de §6. Se o Claude falhar ou a assinatura atingir o limite, usa os modelos prontos (`config/mensagens.js`).
+- **Conexão WhatsApp:** Baileys (WebSocket direto, sem navegador), sessão salva em `dados/sessao-baileys`, reconexão automática; QR lido uma vez pelo painel.
+- **Rastreamento:** toda mensagem de **todas** as conversas do número fica gravada (`whatsapp_mensagens`), consultável pelo painel e pelo MCP.
+
+### Travas de segurança (da revisão da v2)
+1. O Claude **só responde contatos que receberam mensagem da prospecção** (campanha coleta/lembrete/remold ou resposta anterior do atendente). Clientes normais da empresa são só registrados.
+2. **Dono assumiu:** se o dono escrever manualmente para um contato (mensagem `fromMe` que não foi enviada pelo robô), o atendente pausa esse contato por 12 h.
+3. **Anti-loop:** no máximo 8 respostas do atendente por contato em 24 h; se a mesma mensagem recebida se repetir (resposta automática de outro robô), para e avisa o dono. A resposta pode ser vazia (não responder a "ok", "obrigado").
+4. **"não" solto não é opt-out** (é resposta a pergunta); opt-out só com pedido explícito.
+5. **Número inválido** só quando o WhatsApp confirma que o número não existe (`onWhatsApp` → `exists: false`); erro passageiro não invalida.
+6. **Rota diária** marcada como enviada só depois de entregue ao dono; motorista em envio separado.
+7. **Configuração:** não sobe com valores de exemplo do `.env` (nome da empresa, oferta, WhatsApp do dono).
+8. SQLite com `busy_timeout` (mapeamento roda em outro processo).
+
+### MCP (rastreamento para o Claude interativo)
+Além das ferramentas da v2: `sem_resposta` (contatados sem resposta há N dias), `responderam` (quem respondeu e quando), `conversas_recentes` (todas as conversas do número, inclusive não prospectadas) e `ler_chat` (histórico completo de um número).
