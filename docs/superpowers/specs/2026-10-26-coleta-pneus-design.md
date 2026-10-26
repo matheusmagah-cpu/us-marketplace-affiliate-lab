@@ -1,7 +1,7 @@
 # Coleta de pneus + prospecção de remold — Especificação de Design
 
 - **Data:** 2026-10-26
-- **Status:** rascunho para revisão do dono
+- **Status:** aprovado pelo dono em 26/10/2026 (licenciamento e destinação ficam a cargo do dono, fora do escopo)
 - **Pasta do código:** `coleta-pneus/` neste repositório
 - **Onde roda:** no computador do dono (Windows, premissa), ligado no horário comercial. A sessão na nuvem não acessa Google Maps nem WhatsApp (rede bloqueada, testado em 26/10/2026).
 
@@ -137,7 +137,6 @@ Status do estabelecimento: `mapeado → sem_whatsapp | pronto → enviado → re
 - **Bloqueio do número** (WhatsApp não oficial e contato frio): mitigado com chip separado, limites, personalização e opt-out. Risco não é zero.
 - **Termos de uso do Google Maps** proíbem raspagem automática; o volume aqui é pequeno (14 cidades), mas o risco existe. OpenStreetMap é a fonte limpa complementar.
 - **LGPD:** dados são de empresas (contato comercial público); manter opt-out e não compartilhar a base.
-- **Licença ambiental:** no RJ, transporte de resíduos pode exigir licença do INEA e Manifesto de Transporte de Resíduos (MTR), e destino adequado (Reciclanip, recicladora, coprocessamento ou uso como carcaça). **Confirmar antes da primeira coleta.** Não bloqueia a construção do sistema.
 - **Concorrência gratuita:** a Reciclanip/ecopontos municipais podem receber pneus de graça; a mensagem deve vender a conveniência de buscar no local.
 
 ## 14. Pendências
@@ -145,4 +144,3 @@ Status do estabelecimento: `mapeado → sem_whatsapp | pronto → enviado → re
 - Confirmar sistema operacional do computador e o chip separado.
 - Nome da empresa e endereço de saída das rotas (para as mensagens e a ordenação).
 - Texto e condições da campanha de remold.
-- Situação de licenciamento ambiental para a coleta.
