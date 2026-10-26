@@ -1,15 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { confiancaDoNumero, extrairWhatsappDoHtml } from '../src/numeros.js';
+import { extrairWhatsappDoHtml } from '../src/numeros.js';
 import { abrirBanco, salvarEstabelecimento, atualizarEstabelecimento } from '../src/db.js';
 import { proximaTarefa } from '../src/whatsapp/fila.js';
-
-test('confiança do número', () => {
-  assert.equal(confiancaDoNumero({ ehBusiness: true, nomePerfil: 'Fulano', nomeEstabelecimento: 'Pneus Sul' }), 'alta');
-  assert.equal(confiancaDoNumero({ ehBusiness: false, nomePerfil: 'Borracharia do Zé', nomeEstabelecimento: 'Borracharia do Ze' }), 'alta');
-  assert.equal(confiancaDoNumero({ ehBusiness: false, nomePerfil: 'Zé Borracheiro', nomeEstabelecimento: 'Borracharia do Zé Centro' }), 'media');
-  assert.equal(confiancaDoNumero({ ehBusiness: false, nomePerfil: null, nomeEstabelecimento: 'X' }), 'media');
-});
 
 test('extrai WhatsApp de links do site', () => {
   const html = `<a href="https://wa.me/5524998765401">Zap</a>

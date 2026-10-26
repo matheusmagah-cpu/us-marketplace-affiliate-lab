@@ -4,7 +4,7 @@ import { z } from 'zod';
 import config from '../config/config.js';
 import {
   listarEstabelecimentos, obterEstabelecimento, listarMensagens, listarColetas, salvarColeta,
-  atualizarEstabelecimento, gravarAjuste,
+  atualizarEstabelecimento, gravarAjuste, conversasRecentes, lerChat,
 } from './db.js';
 import { montarRota } from './rota.js';
 import { calcularFunil } from './funil.js';
@@ -78,6 +78,41 @@ export function criarMcp(db, { aoMapear } = {}) {
     gravarAjuste(db, 'envios_pausados', '0');
     return texto('Envios retomados.');
   });
+
+  mcp.registerTool('responderam', {
+    description: 'Contatos da prospecção que responderam: última resposta, quando e status.',
+    inputSchema: { cidade: z.string().optional() },
+  }, async ({ cidade }) => texto(db.prepare(`SELECT e.id, e.nome, e.cidade, e.telefone, e.status,
+      (SELECT texto FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'recebida' ORDER BY data_hora DESC LIMIT 1) AS ultima_resposta,
+      (SELECT MAX(data_hora) FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'recebida') AS respondeu_em
+    FROM estabelecimentos e
+    WHERE EXISTS (SELECT 1 FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'recebida') ${cidade ? 'AND e.cidade = ?' : ''}
+    ORDER BY respondeu_em DESC`).all(...(cidade ? [cidade] : []))));
+
+  mcp.registerTool('sem_resposta', {
+    description: 'Contatos que receberam a prospecção há pelo menos N dias e não responderam.',
+    inputSchema: { dias: z.number().int().min(0).default(2) },
+  }, async ({ dias }) => {
+    const limite = new Date(Date.now() - dias * 86400000).toISOString();
+    return texto(db.prepare(`SELECT e.id, e.nome, e.cidade, e.telefone, e.status,
+        (SELECT MIN(data_hora) FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'enviada' AND m.campanha = 'coleta') AS contatado_em,
+        (SELECT COUNT(*) FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'enviada' AND m.campanha = 'lembrete') AS lembretes
+      FROM estabelecimentos e
+      WHERE e.optout = 0
+        AND NOT EXISTS (SELECT 1 FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'recebida')
+        AND (SELECT MIN(data_hora) FROM mensagens m WHERE m.estabelecimento_id = e.id AND m.direcao = 'enviada' AND m.campanha = 'coleta') <= ?
+      ORDER BY contatado_em`).all(limite));
+  });
+
+  mcp.registerTool('conversas_recentes', {
+    description: 'Todas as conversas recentes do número da empresa (prospecção e clientes normais).',
+    inputSchema: { limite: z.number().int().min(1).max(200).default(50) },
+  }, async ({ limite }) => texto(conversasRecentes(db, limite)));
+
+  mcp.registerTool('ler_chat', {
+    description: 'Histórico completo de um número (formato 55DDNNNNNNNNN).',
+    inputSchema: { numero: z.string() },
+  }, async ({ numero }) => texto(lerChat(db, numero.replace(/\D/g, ''))));
 
   if (aoMapear) {
     mcp.registerTool('mapear_cidade', {
