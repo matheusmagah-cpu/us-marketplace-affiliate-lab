@@ -1,6 +1,7 @@
 // Detecta quando o contato pediu para não receber mais mensagens.
 
-const EXATOS = new Set(['sair', 'nao', 'para', 'pare', 'parar', 'stop', 'cancelar', 'chega']);
+// "não" sozinho é resposta a uma pergunta (recusa), não pedido para sair.
+const EXATOS = new Set(['sair', 'pare', 'parar', 'stop', 'cancelar', 'chega']);
 const FRASES = ['nao quero', 'pode parar', 'nao tenho interesse', 'remove', 'remova', 'nao me mande', 'nao mande', 'descadastr', 'nao envie', 'para de mandar', 'pare de mandar'];
 
 function normalizar(texto) {

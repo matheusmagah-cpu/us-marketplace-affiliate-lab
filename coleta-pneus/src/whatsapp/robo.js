@@ -1,108 +1,129 @@
-// O robô completo: verifica números, envia campanhas, atende respostas com IA e avisa o dono.
+// O robô completo: verifica números, envia a prospecção, atende respostas (Claude) e avisa o dono.
+// Trabalha sobre uma "conexão" (Baileys em produção; falsa nos testes).
 import config from '../../config/config.js';
 import { montarMensagem } from '../../config/mensagens.js';
 import {
   listarEstabelecimentos, atualizarEstabelecimento, registrarMensagem, listarMensagens,
-  encontrarPorContato, marcarOptout, lerAjuste, gravarAjuste, obterEstabelecimento,
+  encontrarPorContato, marcarOptout, lerAjuste, gravarAjuste, obterEstabelecimento, registrarWhatsapp,
 } from '../db.js';
 import { dentroDaJanela, limiteDoDia, proximoEnvio } from '../agenda.js';
 import { ehOptout } from '../optout.js';
 import { proximaTarefa, enviadosNoDia, respostasManuaisPendentes, MAX_TENTATIVAS_MANUAL } from './fila.js';
 import { proximaTarefaRemold } from '../remold.js';
-import { enviar, telefoneDoLid } from './cliente.js';
-import { verificarEstabelecimento } from './verificacao.js';
-import { interpretar } from '../atendente/ia.js';
+import { numeroDoJid } from './mensagem.js';
 import { aplicarDecisao } from '../atendente/decisao.js';
+import { podeResponder } from '../atendente/travas.js';
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
-const ESPERA_AGRUPAR_MS = 20000; // junta mensagens seguidas do mesmo contato antes de responder
+const PAUSA_DONO_MS = 12 * 3600 * 1000;
+const CONFIRMACAO_OPTOUT = 'Certo, não enviaremos mais mensagens. Obrigado!';
 
-export function criarRobo({ db, client, anthropic = null, donoWhatsapp = null, log = console, esperaAgruparMs = ESPERA_AGRUPAR_MS, msPorCaractere = 40 }) {
+export function criarRobo({
+  db, conexao, decidir, primeiraMensagem = async (est) => montarMensagem('coleta', est, config),
+  donoNumero = null, log = console, esperaAgruparMs = 5000, msPorCaractere = 40,
+}) {
   const envio = { msPorCaractere };
-  let donoId = null;
-  const pendentes = new Map(); // estabelecimento_id -> timer
+  const pendentes = new Map(); // estabelecimento_id -> timer de agrupamento
+  const avisosDados = new Set(); // evita repetir o mesmo aviso ao dono
+  let donoJid = null;
 
   async function avisarDono(texto) {
-    if (!donoWhatsapp) return;
+    if (!donoNumero) return false;
     try {
-      donoId ??= (await client.getNumberId(donoWhatsapp))?._serialized;
-      if (donoId) await client.sendMessage(donoId, texto, { sendSeen: false });
+      donoJid ??= (await conexao.numeroNoWhatsapp(donoNumero)).jid;
+      if (!donoJid) return false;
+      await conexao.enviarTexto(donoJid, texto, { msPorCaractere: 0 });
+      return true;
     } catch (e) {
       log.warn('Não consegui avisar o dono:', e.message);
+      return false;
     }
   }
 
-  async function responderComIa(estId) {
+  async function avisarUmaVez(chave, texto) {
+    if (avisosDados.has(chave)) return;
+    if (await avisarDono(texto)) avisosDados.add(chave);
+  }
+
+  async function enviarPara(est, texto, campanha) {
+    await conexao.enviarTexto(est.whatsapp_id || est.lid, texto, envio);
+    registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto, campanha });
+  }
+
+  async function responder(estId) {
     pendentes.delete(estId);
     const est = obterEstabelecimento(db, estId);
-    if (!est || est.optout || !anthropic) return;
-    const destino = est.whatsapp_id || est.lid;
+    if (!est || est.optout || est.status === 'invalido') return;
+    const trava = podeResponder(db, est, new Date());
+    if (!trava.ok) return tratarTrava(est, trava.motivo);
     try {
-      const decisao = await interpretar(anthropic, { est, historico: listarMensagens(db, estId).slice(-20), hoje: new Date() });
+      const decisao = await decidir({ est, historico: listarMensagens(db, estId).slice(-20), hoje: new Date() });
       const { resposta, avisarDono: aviso } = aplicarDecisao(db, est, decisao, new Date());
-      if (resposta) {
-        await enviar(client, destino, resposta, envio);
-        registrarMensagem(db, { estabelecimentoId: estId, direcao: 'enviada', texto: resposta, campanha: 'atendente' });
-      }
+      if (resposta) await enviarPara(est, resposta, 'atendente');
       if (aviso) await avisarDono(aviso);
       log.log(`Atendente: ${est.nome} (${est.cidade}) -> ${decisao.intencao}`);
     } catch (e) {
       log.warn(`Atendente falhou para ${est.nome}: ${e.message}`);
-      await avisarDono(`O atendimento automático falhou para ${est.nome} (${est.cidade}). Responda pelo painel. Erro: ${e.message}`);
+      await avisarDono(`O atendimento automático não respondeu ${est.nome} (${est.cidade}). Responda pelo painel ou pelo celular. Motivo: ${e.message}`);
     }
   }
 
-  async function aoReceber(msg) {
-    try {
-      if (msg.fromMe || msg.from.endsWith('@g.us') || msg.from === 'status@broadcast') return;
-      const ids = [msg.from];
-      const numeros = [];
-      if (msg.from.endsWith('@lid')) {
-        const pn = await telefoneDoLid(client, msg.from);
-        if (pn) { ids.push(pn); numeros.push(pn.split('@')[0]); }
-      } else {
-        numeros.push(msg.from.split('@')[0]);
-      }
-      try {
-        const contato = await msg.getContact();
-        if (contato?.id?.user) numeros.push(contato.id.user);
-      } catch {
-        // segue com o que já temos
-      }
-      const est = encontrarPorContato(db, { ids, numeros });
-      if (!est) return; // conversa normal da empresa: o robô não mexe
-      if (msg.from.endsWith('@lid') && !est.lid) atualizarEstabelecimento(db, est.id, { lid: msg.from });
+  async function tratarTrava(est, motivo) {
+    if (motivo === 'teto') await avisarUmaVez(`teto:${est.id}`, `${est.nome} (${est.cidade}) já recebeu muitas respostas automáticas hoje; pausei o atendimento com esse contato. Veja a conversa.`);
+    if (motivo === 'repeticao') await avisarUmaVez(`rep:${est.id}`, `${est.nome} (${est.cidade}) parece ser uma resposta automática repetida; parei de responder para não entrar em loop.`);
+  }
 
-      registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'recebida', texto: msg.body || '[mídia]', campanha: null });
+  // Toda mensagem do número passa aqui (Baileys -> conexao -> robô).
+  async function aoMensagem(m) {
+    registrarWhatsapp(db, m, { peloRobo: m.peloRobo });
+    if (!m.tempoReal) return; // histórico antigo: só registra
 
-      if (ehOptout(msg.body)) {
-        marcarOptout(db, { telefone: est.telefone, whatsapp_id: est.whatsapp_id, lid: msg.from.endsWith('@lid') ? msg.from : est.lid });
-        const confirmacao = 'Certo, não enviaremos mais mensagens. Obrigado!';
-        await client.sendMessage(msg.from, confirmacao, { sendSeen: false });
-        registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto: confirmacao, campanha: 'sistema' });
-        return;
-      }
-      if (est.optout || est.status === 'invalido') return;
+    const numeros = [numeroDoJid(m.jid), numeroDoJid(m.jidAlt)];
+    if (m.jid.endsWith('@lid') && !m.jidAlt) numeros.push(numeroDoJid(await conexao.telefoneDoLid(m.jid)));
+    const est = encontrarPorContato(db, { ids: [m.jid, m.jidAlt], numeros });
+    if (!est) return; // clientes normais da empresa: só rastreamento, o robô não responde
+    if (m.jid.endsWith('@lid') && !est.lid) atualizarEstabelecimento(db, est.id, { lid: m.jid });
 
-      if (anthropic) {
-        clearTimeout(pendentes.get(est.id));
-        pendentes.set(est.id, setTimeout(() => responderComIa(est.id), esperaAgruparMs));
-      } else if (est.status === 'enviado') {
-        atualizarEstabelecimento(db, est.id, { status: 'respondeu' });
-        await avisarDono(`${est.nome} (${est.cidade}) respondeu: "${msg.body}". Veja no painel.`);
-      }
-    } catch (e) {
-      log.warn('Erro ao processar mensagem recebida:', e.message);
+    if (m.deMim) {
+      if (m.peloRobo) return;
+      // O dono escreveu pelo celular: ele assumiu a conversa, o atendente fica de fora por 12 h.
+      registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto: m.texto, campanha: 'dono', dataHora: m.quando });
+      atualizarEstabelecimento(db, est.id, { pausado_ate: new Date(Date.now() + PAUSA_DONO_MS).toISOString() });
+      clearTimeout(pendentes.get(est.id));
+      pendentes.delete(est.id);
+      return;
     }
+
+    registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'recebida', texto: m.texto, campanha: null, dataHora: m.quando });
+
+    if (ehOptout(m.texto)) {
+      marcarOptout(db, { telefone: est.telefone, whatsapp_id: est.whatsapp_id, lid: est.lid || (m.jid.endsWith('@lid') ? m.jid : null) });
+      try {
+        await conexao.enviarTexto(m.jid, CONFIRMACAO_OPTOUT, { msPorCaractere: 0 });
+        registrarMensagem(db, { estabelecimentoId: est.id, direcao: 'enviada', texto: CONFIRMACAO_OPTOUT, campanha: 'sistema' });
+      } catch (e) {
+        log.warn('Falha ao confirmar opt-out:', e.message);
+      }
+      return;
+    }
+    if (est.optout || est.status === 'invalido') return;
+
+    clearTimeout(pendentes.get(est.id));
+    pendentes.set(est.id, setTimeout(() => responder(est.id), esperaAgruparMs));
   }
 
   async function verificarNovos() {
+    if (!conexao.estaConectado()) return;
     const aVerificar = listarEstabelecimentos(db).filter((e) => e.telefone && e.tem_whatsapp == null && !e.optout && e.status !== 'invalido');
     for (const e of aVerificar) {
       try {
-        atualizarEstabelecimento(db, e.id, await verificarEstabelecimento(client, e));
+        const r = await conexao.numeroNoWhatsapp(e.telefone);
+        atualizarEstabelecimento(db, e.id, r.existe
+          ? { tem_whatsapp: 1, whatsapp_id: r.jid, confianca: r.ehBusiness ? 'alta' : 'media', status: e.status === 'sem_whatsapp' ? 'pronto' : e.status }
+          : { tem_whatsapp: 0, status: e.status === 'pronto' ? 'sem_whatsapp' : e.status });
       } catch (err) {
         log.warn(`Falha ao verificar ${e.nome}: ${err.message}`);
+        if (!conexao.estaConectado()) return;
       }
       await esperar(1500 + Math.random() * 2500);
     }
@@ -111,7 +132,7 @@ export function criarRobo({ db, client, anthropic = null, donoWhatsapp = null, l
   async function enviarManuais() {
     for (const r of respostasManuaisPendentes(db)) {
       try {
-        await enviar(client, r.whatsapp_id || r.lid, r.texto, envio);
+        await conexao.enviarTexto(r.whatsapp_id || r.lid, r.texto, envio);
         registrarMensagem(db, { estabelecimentoId: r.estabelecimento_id, direcao: 'enviada', texto: r.texto, campanha: 'manual' });
         db.prepare("UPDATE fila_envio SET status = 'enviada' WHERE id = ?").run(r.id);
       } catch (e) {
@@ -127,28 +148,27 @@ export function criarRobo({ db, client, anthropic = null, donoWhatsapp = null, l
   let falhas = 0;
 
   async function passoDeEnvio() {
-    const agora = new Date();
-    if (lerAjuste(db, 'envios_pausados') === '1') return;
+    if (!conexao.estaConectado() || lerAjuste(db, 'envios_pausados') === '1') return;
     await enviarManuais();
+    const agora = new Date();
     const inicio = new Date(`${config.envio.inicioCampanha}T08:30:00-03:00`);
     if (!dentroDaJanela(agora) || agora < proximoHorario || enviadosNoDia(db, agora) >= limiteDoDia(inicio, agora)) return;
 
     const tarefa = proximaTarefa(db, agora) || proximaTarefaRemold(db, agora);
     if (!tarefa) return;
     const { tipo, estabelecimento: e } = tarefa;
-    const texto = montarMensagem(tipo, e, config);
     try {
-      await enviar(client, e.whatsapp_id, texto, envio);
-      registrarMensagem(db, { estabelecimentoId: e.id, direcao: 'enviada', texto, campanha: tipo });
+      const texto = tipo === 'coleta' ? await primeiraMensagem(e) : montarMensagem(tipo, e, config);
+      await enviarPara(e, texto, tipo);
       if (tipo === 'coleta') atualizarEstabelecimento(db, e.id, { status: 'enviado' });
       log.log(`[${agora.toLocaleString('pt-BR')}] ${tipo} -> ${e.nome} (${e.cidade})`);
       falhas = 0;
     } catch (err) {
       falhas++;
-      // Só culpa o número se o WhatsApp está conectado; senão é problema de conexão.
-      const estado = await client.getState().catch(() => null);
-      if (estado === 'CONNECTED') atualizarEstabelecimento(db, e.id, { status: 'invalido' });
-      log.warn(`Falha ao enviar para ${e.nome}: ${err.message}${estado === 'CONNECTED' ? ' (número marcado como inválido)' : ''}`);
+      log.warn(`Falha ao enviar para ${e.nome}: ${err.message}`);
+      // Só invalida se o WhatsApp confirmar que o número não existe.
+      const r = await conexao.numeroNoWhatsapp(e.telefone).catch(() => null);
+      if (r && !r.existe) atualizarEstabelecimento(db, e.id, { status: 'invalido', tem_whatsapp: 0 });
       if (falhas >= config.envio.falhasParaParar) {
         gravarAjuste(db, 'envios_pausados', '1');
         await avisarDono(`${falhas} falhas seguidas no envio: os envios foram PAUSADOS. Confira o WhatsApp e retome pelo painel.`);
@@ -157,5 +177,5 @@ export function criarRobo({ db, client, anthropic = null, donoWhatsapp = null, l
     proximoHorario = proximoEnvio(new Date());
   }
 
-  return { aoReceber, verificarNovos, passoDeEnvio, avisarDono, responderComIa };
+  return { aoMensagem, verificarNovos, passoDeEnvio, avisarDono, responder };
 }

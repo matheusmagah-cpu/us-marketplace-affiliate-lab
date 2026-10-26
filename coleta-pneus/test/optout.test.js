@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ehOptout } from '../src/optout.js';
 
 test('reconhece pedidos para parar', () => {
-  for (const t of ['sair', 'SAIR!', 'Não', 'nao quero', 'Pode parar', 'remove meu número', 'não tenho interesse', 'Não me mande mais mensagem']) {
+  for (const t of ['sair', 'SAIR!', 'nao quero', 'Pode parar', 'remove meu número', 'não tenho interesse', 'Não me mande mais mensagem']) {
     assert.ok(ehOptout(t), t);
   }
 });

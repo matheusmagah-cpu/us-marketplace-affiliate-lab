@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS estabelecimentos (
   lid TEXT,
   confianca TEXT,
   site TEXT,
+  pausado_ate TEXT,
   fonte TEXT,
   nota REAL,
   avaliacoes INTEGER,
@@ -94,7 +95,7 @@ const CAMPOS = {
 };
 
 const COLUNAS_EDITAVEIS = new Set([
-  'status', 'trabalha_remold', 'optout', 'observacoes', 'tem_whatsapp', 'whatsapp_id', 'lid', 'confianca', 'site',
+  'status', 'trabalha_remold', 'optout', 'observacoes', 'tem_whatsapp', 'whatsapp_id', 'lid', 'confianca', 'site', 'pausado_ate',
   'telefone', 'tipo_telefone', 'endereco', 'lat', 'lng',
 ]);
 
@@ -112,7 +113,7 @@ export function abrirBanco(caminho = 'dados/coleta.db') {
 // Acrescenta colunas novas em bancos criados por versões anteriores.
 function migrar(db) {
   const colunas = new Set(db.prepare('PRAGMA table_info(estabelecimentos)').all().map((c) => c.name));
-  for (const c of ['whatsapp_id', 'lid', 'confianca', 'site']) {
+  for (const c of ['whatsapp_id', 'lid', 'confianca', 'site', 'pausado_ate']) {
     if (!colunas.has(c)) db.exec(`ALTER TABLE estabelecimentos ADD COLUMN ${c} TEXT`);
   }
 }
