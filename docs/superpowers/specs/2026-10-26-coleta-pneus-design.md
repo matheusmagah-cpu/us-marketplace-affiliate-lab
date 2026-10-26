@@ -26,6 +26,7 @@ Barra Mansa, Pinheiral, Porto Real, Quatis, Resende, Itatiaia, Barra do Piraí, 
 | Preço da coleta | R$1,50 por pneu. (decisão) |
 | Sistema operacional | Windows. (premissa) |
 | Número de WhatsApp | Chip separado só para a coleta. (premissa recomendada) |
+| Ponto de saída das rotas | Av. Adalberto Barros Nunes, bairro Retiro, Volta Redonda (decisão). Volta Redonda é só origem, não é prospectada. |
 | Respostas | O dono (ou alguém da empresa) responde as conversas; o sistema não responde sozinho na v1. (premissa) |
 
 ## 3. Critérios de sucesso
@@ -142,5 +143,5 @@ Status do estabelecimento: `mapeado → sem_whatsapp | pronto → enviado → re
 ## 14. Pendências
 
 - Confirmar sistema operacional do computador e o chip separado.
-- Nome da empresa e endereço de saída das rotas (para as mensagens e a ordenação).
+- Nome da empresa (para as mensagens). Saída das rotas definida: Av. Adalberto Barros Nunes, Retiro, Volta Redonda.
 - Texto e condições da campanha de remold.
