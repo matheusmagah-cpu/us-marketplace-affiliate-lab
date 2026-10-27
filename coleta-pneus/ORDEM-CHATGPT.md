@@ -24,7 +24,7 @@ Você está em **modo Agente**, com navegador e terminal próprios. **Faça voc�
 
 ## Quando me chamar (assumir o controle)
 
-- **Etapa 1:** criar a conta e entrar na Oracle (meus dados, senha, cartão, código de verificação, captcha).
+- **Etapa 1:** captcha, link de verificação do e-mail, senha, endereço, telefone/SMS, cartão e login da Oracle.
 - **Etapa 5, só se for preciso:** entrar no GitHub para deixar o repositório público.
 - **Etapa 6:** entrar na minha conta do Claude e autorizar.
 - **Etapa 7:** confirmar com você os dados da empresa. Pergunte em **uma** mensagem só:
@@ -52,14 +52,32 @@ Em qualquer tela de login, senha, cartão, código por SMS/e-mail ou captcha, **
 
 ---
 
-## ETAPA 1 — Conta da Oracle Cloud
+## ETAPA 1 — Conta da Oracle Cloud (você conduz, eu só assumo nos dados pessoais)
 
-1. Abra https://www.oracle.com/cloud/free/ e clique em **Start for free**.
-2. **Me chame para assumir.** Eu preencho os dados, a senha, o cartão (só verificação; o plano Always Free não cobra) e os códigos.
-3. **Home Region:** **Brazil East (Sao Paulo)**. Confirme comigo antes de concluir, porque não dá para trocar depois.
-4. Se a conta já existir, só me peça para fazer o login em https://cloud.oracle.com.
+O cadastro acontece **no seu navegador** (o do agente), não no meu. Se eu tiver começado um cadastro no meu Chrome, ignore: comece do zero no seu.
 
-**Verificação:** o painel da Oracle está aberto, com o menu ☰.
+1. Abra https://signup.cloud.oracle.com.
+2. Preencha:
+   - **País/Território:** Brasil
+   - **Nome Próprio:** Matheus
+   - **Apelido:** Magalhaes
+   - **Email:** me pergunte qual usar.
+3. **Captcha "Sou humano":** se aparecer desafio, **me chame para assumir**.
+4. Clique em **Confirmar o meu endereço de email**.
+5. **Me chame para assumir.** Diga: "Abra seu e-mail, copie o link de verificação da Oracle e cole na barra de endereço do meu navegador". Eu assumo, colo o link e te devolvo o controle.
+6. Na tela seguinte, preencha você:
+   - **Cloud Account Name:** `coletapneus` (se estiver em uso, `coletapneusvr`, depois `coletapneus2`). Escreva o nome que ficou no chat, porque ele não é segredo e eu preciso dele para fazer login.
+   - **Home Region:** **Brazil East (Sao Paulo)**. Confira duas vezes: não dá para trocar depois.
+7. **Senha:** **me chame para assumir.** Eu digito a senha; você nunca a vê nem escreve.
+8. **Endereço, telefone e código SMS:** **me chame para assumir.**
+9. **Cartão (verificação, cerca de US$ 1, devolvido; o Always Free não cobra):** **me chame para assumir.**
+10. Aceite os termos e clique em **Iniciar o meu teste gratuito / Start my free trial**.
+11. Espere a tela "Sua conta está sendo provisionada". Pode levar de minutos a algumas horas.
+    - A cada 5 minutos, tente entrar em https://cloud.oracle.com com o Cloud Account Name. Na tela de login, **me chame para assumir** (senha).
+    - Se demorar mais de 30 minutos, me avise e pare. Eu volto quando chegar o e-mail "Your account is ready".
+12. Se a Oracle **recusar o cadastro** (comum com cartão pré-pago ou virtual), pare e me diga a mensagem exata. Não tente de novo com outros dados.
+
+**Verificação:** o Console da Oracle está aberto (menu ☰ no canto superior esquerdo) e a região no topo é **Brazil East (Sao Paulo)**.
 
 ## ETAPA 2 — Chave de acesso (no Cloud Shell) e servidor
 
@@ -265,4 +283,11 @@ Me entregue:
 - O mapeamento automatizado do Google Maps vai contra os termos do Google.
 - O endereço do conector e a senha do painel são segredos. Como você, agente, viu esses valores na tela, me sugira trocar a senha do painel depois. É só editar `PAINEL_SENHA` no `.env` e reiniciar.
 
-Comece agora pela **ETAPA 1**.
+## Comece assim
+
+1. Na sua **primeira** mensagem, me pergunte tudo de uma vez:
+   - o e-mail para a conta da Oracle;
+   - os dados da etapa 7 (nome da empresa, meu WhatsApp, WhatsApp do motorista, oferta do remold com preço, data de início).
+
+   Assim você não precisa parar depois.
+2. Em seguida, comece a **ETAPA 1** sem esperar mais nada.
