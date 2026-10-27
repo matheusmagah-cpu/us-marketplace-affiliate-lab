@@ -55,3 +55,13 @@ test('MCP responde o funil', async (t) => {
   const corpo = await r.json();
   assert.ok(corpo.result.content[0].text.includes('Quatis'));
 });
+
+test('MCP aceita o token no endereço (conector do claude.ai)', async (t) => {
+  const { srv, base } = await iniciar();
+  t.after(() => srv.close());
+  const corpo = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+  assert.equal((await fetch(base + '/mcp/errado', { method: 'POST', headers, body: corpo })).status, 401);
+  assert.equal((await fetch(base + '/mcp/tok123', { method: 'POST', headers, body: corpo })).status, 200);
+  assert.equal((await fetch(base + '/.well-known/oauth-protected-resource')).status, 404);
+});

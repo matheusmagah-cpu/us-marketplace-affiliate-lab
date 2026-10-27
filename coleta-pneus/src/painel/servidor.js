@@ -42,15 +42,19 @@ export function criarApp(db, opcoes = {}) {
   app.use(express.json());
 
   if (opcoes.mcpToken) {
-    app.post('/mcp', async (req, res) => {
-      const [tipo, token] = String(req.headers.authorization || '').split(' ');
-      if (tipo !== 'Bearer' || !iguais(token || '', opcoes.mcpToken)) return res.status(401).json({ erro: 'token inválido' });
+    // Token no cabeçalho (Claude Code) ou no endereço /mcp/TOKEN (conector do claude.ai, que não manda cabeçalho).
+    app.post(['/mcp', '/mcp/:token'], async (req, res) => {
+      const [tipo, doCabecalho] = String(req.headers.authorization || '').split(' ');
+      const token = req.params.token ?? (tipo === 'Bearer' ? doCabecalho : '');
+      if (!iguais(token || '', opcoes.mcpToken)) return res.status(401).json({ erro: 'token inválido' });
       const mcp = criarMcp(db, { aoMapear: opcoes.aoMapear });
       const transporte = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on('close', () => { transporte.close(); mcp.close(); });
       await mcp.connect(transporte);
       await transporte.handleRequest(req, res, req.body);
     });
+    // Sem login por OAuth: responde "não existe" em vez de pedir a senha do painel.
+    app.use('/.well-known', (req, res) => res.status(404).end());
   }
 
   if (opcoes.usuario && opcoes.senha) app.use(exigirSenha(opcoes.usuario, opcoes.senha));

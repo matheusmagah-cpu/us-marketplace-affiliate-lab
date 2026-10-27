@@ -113,13 +113,15 @@ O instalador coloca Node.js, Claude Code, o navegador do mapeamento, HTTPS (Cadd
 - **WhatsApp:** status da conexão e QR code.
 - **Pausar envios:** botão vermelho no topo.
 
-## 7. Falar comigo (Claude) sobre o sistema — MCP
+## 7. Falar comigo (Claude) sobre o sistema — conector MCP
 
-No seu computador, com o Claude Code instalado (troque o endereço e o token pelos seus; o token é o `MCP_TOKEN` do `.env`):
+Pelo navegador ou pelo app do Claude, sem instalar nada: em claude.ai > **Configurações** > **Conectores** > **Adicionar conector personalizado**, cole o endereço secreto que o instalador mostrou no final (`https://SEU-ENDERECO.sslip.io/mcp/SEU_MCP_TOKEN`). Para ver de novo, no servidor:
 
 ```
-claude mcp add --transport http coleta https://SEU-ENDERECO.sslip.io/mcp --header "Authorization: Bearer SEU_MCP_TOKEN"
+echo "https://$(grep -m1 -o '[0-9-]*\.sslip\.io' /etc/caddy/Caddyfile)/mcp/$(grep ^MCP_TOKEN= /opt/coleta/coleta-pneus/.env | cut -d= -f2)"
 ```
+
+Esse endereço dá acesso às conversas: trate como senha. (No Claude Code também funciona com cabeçalho: `claude mcp add --transport http coleta https://SEU-ENDERECO.sslip.io/mcp --header "Authorization: Bearer SEU_MCP_TOKEN"`.)
 
 Depois é só pedir em português. Ferramentas disponíveis:
 

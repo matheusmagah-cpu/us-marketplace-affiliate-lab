@@ -84,6 +84,7 @@ Instalação concluída.
    Usuário e senha estão no .env (PAINEL_USUARIO / PAINEL_SENHA).
 5) No painel, menu "WhatsApp": leia o QR code com o WhatsApp Business da empresa.
 
-Endereço da conexão MCP:  https://$DOMINIO/mcp   (token: MCP_TOKEN do .env)
+Conector do Claude (claude.ai > Configurações > Conectores):  https://$DOMINIO/mcp/$(grep ^MCP_TOKEN= .env | cut -d= -f2)
+(esse endereço é secreto: quem tiver ele lê as conversas)
 Ver o que o robô está fazendo:  journalctl -u coleta-pneus -f
 FIM
